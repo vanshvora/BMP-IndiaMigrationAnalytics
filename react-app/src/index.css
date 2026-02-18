@@ -1,0 +1,40 @@
+/* Global styles (Tailwind removed) */
+
+:root {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    color: #111827;
+    background: #f9fafb;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+/* Remove focus outline/rectangle on map elements */
+.leaflet-container:focus {
+    outline: none !important;
+}
+
+.leaflet-interactive:focus {
+    outline: none !important;
+}
+
+path.leaflet-interactive:focus {
+    outline: none !important;
+}
