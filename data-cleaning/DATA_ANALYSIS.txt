@@ -1,9 +1,0 @@
-# Data Analysis
-
-This project analyzes Indian Census 2011 migration data (D-01 series) through data preprocessing and interactive visualization. The Python script (`clean_data.py`) reads the raw Excel data (`DS-0000-D01-MDDS.XLSX`), removes aggregate/summary rows, zero values, and unclassifiable entries, and outputs a cleaned CSV with columns for Total, Male, Female, Rural and Urban migration counts.
-
-The React dashboard loads this CSV and filters it to domestic (inter-state) migration flows only. Users can toggle between inflow and outflow views, adjust a minimum migrant threshold, and click on any state to see detailed breakdowns including top/bottom migration corridors, a full data table, gender breakdown (male vs female), and urban vs rural distribution.
-
-## Conclusion
-
-The project demonstrates data analysis through preprocessing, filtering, and interactive visualization, providing a tool for exploring Census 2011 domestic migration patterns across Indian states.

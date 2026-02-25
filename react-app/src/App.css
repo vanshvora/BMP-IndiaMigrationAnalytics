@@ -1,0 +1,219 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f4;
+}
+
+.loading {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafaf9;
+}
+
+.loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #e7e5e4;
+  border-top-color: #0ea5e9;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-msg {
+  font-size: 13px;
+  color: #78716c;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.navbar {
+  height: 52px;
+  background: #ffffff;
+  border-bottom: 1px solid #e7e5e4;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10000;
+}
+
+.hamburger {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  margin-right: 14px;
+  cursor: pointer;
+  color: #78716c;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.hamburger:hover {
+  background: #f5f5f4;
+  color: #1c1917;
+}
+
+.hamburger-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.logo {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1c1917;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.badge {
+  margin-left: 10px;
+  font-size: 10px;
+  color: #a8a29e;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  background: #f5f5f4;
+  border-radius: 999px;
+}
+
+.dropdown {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  width: 220px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e7e5e4;
+  padding: 16px;
+  z-index: 10001;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.dropdown-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #78716c;
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.dropdown-text {
+  color: #a8a29e;
+  font-size: 13px;
+  margin: 0 0 14px 0;
+}
+
+.close-btn {
+  width: 100%;
+  padding: 9px 12px;
+  background: #f5f5f4;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #44403c;
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.close-btn:hover {
+  background: #e7e5e4;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-section {
+  position: relative;
+  display: flex;
+  height: 75vh;
+  width: 100%;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e7e5e4;
+  transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.open {
+  width: 280px;
+}
+
+.closed {
+  width: 44px;
+}
+
+.scroll-area {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.expand-btn {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a8a29e;
+  transition: background 150ms, color 150ms;
+}
+
+.expand-btn:hover {
+  background: #fafaf9;
+  color: #1c1917;
+}
+
+.chevron {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.map-area {
+  flex: 1;
+  position: relative;
+  background: #f5f5f4;
+  min-width: 0;
+}
+
+.data-area {
+  background: #f5f5f4;
+  flex: 1;
+}

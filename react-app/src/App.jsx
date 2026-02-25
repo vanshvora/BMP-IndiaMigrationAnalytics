@@ -3,37 +3,50 @@ import MapView from './components/MapView';
 import Sidebar from './components/Sidebar';
 import DataSection from './components/DataSection';
 import { normalizeName, INDIAN_STATES_NORM } from './utils/coordinates';
-import styles from './App.module.css';
+import './App.css';
 
-const DATA_URL = '/Final_Cleaned_Data.csv';
+const DATA_URL = '/D01_cleaned.csv';
 
-// process the CSV data into the format we need
+// cleaning and processing the csv data
 function processData(rawData) {
   const csvData = [];
 
-  rawData.forEach(row => {
-    const destRaw = row['Area Name'] || '';
-    const originRaw = row['Birth place'] || '';
+  for (let i = 0; i < rawData.length; i++) {
+    const row = rawData[i];
+
+    // get the destination and origin state names
+    const destRaw = row['AreaName'] || row['Area Name'] || '';
+    const originRaw = row['BirthPlace'] || row['Birth place'] || '';
 
     const dest = normalizeName(destRaw);
     const origin = normalizeName(originRaw);
-    const count = parseInt(row['Total'] || '0');
-    const male = parseInt(row['Male'] || '0');
-    const female = parseInt(row['Female'] || '0');
-    const rural = parseInt(row['Rural_Total'] || '0');
-    const urban = parseInt(row['Urban_Total'] || '0');
 
-    // skip invalid rows
-    if (isNaN(count) || count === 0) return;
-    if (origin === dest) return;
+    // get the migration numbers
+    const count = Number(row['Total_Persons'] || row['Total'] || 0) || 0;
+    const male = Number(row['Total_Males'] || row['Male'] || 0) || 0;
+    const female = Number(row['Total_Females'] || row['Female'] || 0) || 0;
 
-    // only keep domestic flows (both origin and destination are indian states)
-    const isDomesticOrigin = INDIAN_STATES_NORM.includes(origin);
-    const isDomesticDest = INDIAN_STATES_NORM.includes(dest);
-    if (!isDomesticOrigin || !isDomesticDest) return;
+    // for rural/urban we sometimes need to add males+females
+    let rural = Number(row['Rural_Persons'] || row['Rural_Total'] || 0) || 0;
+    if (rural === 0) {
+      rural = (Number(row['Rural_Males'] || 0) || 0) + (Number(row['Rural_Females'] || 0) || 0);
+    }
+
+    let urban = Number(row['Urban_Persons'] || row['Urban_Total'] || 0) || 0;
+    if (urban === 0) {
+      urban = (Number(row['Urban_Males'] || 0) || 0) + (Number(row['Urban_Females'] || 0) || 0);
+    }
+
+    // skip if no migration count or if origin == destination
+    if (count <= 0) continue;
+    if (origin === dest) continue;
+
+    // only keep domestic flows (both should be indian states)
+    if (!INDIAN_STATES_NORM.includes(origin)) continue;
+    if (!INDIAN_STATES_NORM.includes(dest)) continue;
 
     csvData.push({ origin, destination: dest, count, male, female, rural, urban });
-  });
+  }
 
   console.log(`Loaded ${csvData.length} migration records`);
   return csvData;
@@ -48,11 +61,14 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // load the csv file when page loads
   useEffect(() => {
     async function loadData() {
       try {
         const response = await fetch(DATA_URL);
         const csvText = await response.text();
+
+        // using papaparse to read csv
         const Papa = await import('papaparse');
         Papa.default.parse(csvText, {
           header: true,
@@ -71,6 +87,7 @@ function App() {
     loadData();
   }, []);
 
+  // when a state is clicked, scroll down to the data section
   const handleStateClick = (state) => {
     setSelectedState(state);
     setTimeout(() => {
@@ -78,39 +95,43 @@ function App() {
     }, 100);
   };
 
+  // loading screen
   if (loading) {
     return (
-      <div className={styles.loadingScreen}>
-        <div className={styles.loadingInner}>
-          <div className={styles.spinner} />
-          <p className={styles.loadingText}>Loading migration data...</p>
+      <div className="loading">
+        <div className="loading-box">
+          <div className="spinner" />
+          <p className="loading-msg">Loading migration data...</p>
         </div>
       </div>
     );
   }
 
+  // change color based on inflow/outflow
+  const accent = flowType === 'inflow' ? '#3b82f6' : 'rgba(249, 115, 22, 0.78)';
+
   return (
-    <div className={styles.app}>
-      {/* Navbar */}
-      <header className={styles.navbar}>
+    <div className="app" style={{ '--flow-accent': accent }}>
+      {/* Top navigation bar */}
+      <header className="navbar">
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className={styles.menuButton}
+          className="hamburger"
         >
-          <svg className={styles.menuIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="hamburger-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 className={styles.brandTitle}>India Migration Analytics</h1>
-        <span className={styles.brandSubtitle}>Census 2011 D-Series</span>
+        <h1 className="logo">India Migration Analytics</h1>
+        <span className="badge">Census 2011 D-Series</span>
 
         {menuOpen && (
-          <div className={styles.menuDropdown}>
-            <h3 className={styles.menuHeading}>Navigation</h3>
-            <p className={styles.menuHint}>No other pages available yet.</p>
+          <div className="dropdown">
+            <h3 className="dropdown-title">Navigation</h3>
+            <p className="dropdown-text">No other pages available yet.</p>
             <button
               onClick={() => setMenuOpen(false)}
-              className={styles.menuClose}
+              className="close-btn"
             >
               Close Menu
             </button>
@@ -118,14 +139,14 @@ function App() {
         )}
       </header>
 
-      <div className={styles.content}>
-        {/* Map Section */}
-        <div className={styles.mapSection}>
+      <div className="content">
+        {/* Map with sidebar */}
+        <div className="map-section">
           <aside
-            className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : styles.sidebarCollapsed}`}
+            className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}
           >
             {sidebarOpen ? (
-              <div className={styles.sidebarScroll}>
+              <div className="scroll-area">
                 <Sidebar
                   flows={flows}
                   flowType={flowType}
@@ -139,15 +160,15 @@ function App() {
             ) : (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className={styles.sidebarExpandButton}
+                className="expand-btn"
                 title="Expand sidebar"
               >
-                <span className={styles.sidebarExpandChevron}>»</span>
+                <span className="chevron">{">>"}</span>
               </button>
             )}
           </aside>
 
-          <main className={styles.mapMain}>
+          <main className="map-area">
             <MapView
               flows={flows}
               flowType={flowType}
@@ -159,8 +180,8 @@ function App() {
           </main>
         </div>
 
-        {/* Analytics Section */}
-        <div id="data-section" className={styles.analyticsSection}>
+        {/* Data analytics section below the map */}
+        <div id="data-section" className="data-area">
           <DataSection
             flows={flows}
             flowType={flowType}
@@ -174,3 +195,4 @@ function App() {
 }
 
 export default App;
+

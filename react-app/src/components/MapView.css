@@ -1,0 +1,36 @@
+.btns {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn {
+  background: #ffffff;
+  padding: 7px 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #44403c;
+  border: 1px solid #e7e5e4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: background 150ms, box-shadow 150ms;
+  letter-spacing: 0.01em;
+}
+
+.btn:hover {
+  background: #fafaf9;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.x-icon {
+  color: #f87171;
+  font-size: 11px;
+}

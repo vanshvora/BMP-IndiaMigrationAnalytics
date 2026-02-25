@@ -3,16 +3,22 @@ import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { COORDINATES, INTERNATIONAL_COORDINATES, getBezierPoints, normalizeName } from '../utils/coordinates';
-import styles from './MapView.module.css';
+import './MapView.css';
 
-// get coords from either domestic or international
+// get coordinates for a state - check domestic first, then international
 function getCoords(name) {
-    return COORDINATES[name] || INTERNATIONAL_COORDINATES[name] || null;
+    if (COORDINATES[name]) return COORDINATES[name];
+    if (INTERNATIONAL_COORDINATES[name]) return INTERNATIONAL_COORDINATES[name];
+    return null;
 }
 
+// geojson url for india map with state boundaries
 const INDIA_GEOJSON_URL = "https://raw.githubusercontent.com/geohacker/india/master/state/india_telengana.geojson";
 
-// Leaflet curve plugin - needed for bezier curves on map
+// ---- Leaflet Curve Plugin ----
+// we need this to draw curved bezier lines on the map
+// found this on github and modified it slightly
+// it extends the Leaflet Path class to support SVG curves
 (function () {
     L.Curve = L.Path.extend({
         options: {},
@@ -56,8 +62,11 @@ const INDIA_GEOJSON_URL = "https://raw.githubusercontent.com/geohacker/india/mas
             }
         }
     });
+
+    // shortcut function
     L.curve = function (path, options) { return new L.Curve(path, options); };
 
+    // this part converts curve points to SVG path string
     L.SVG.include({
         _updateCurve: function (layer) {
             this._setPath(layer, this._curvePointsToPath(layer._points));
@@ -76,30 +85,29 @@ const INDIA_GEOJSON_URL = "https://raw.githubusercontent.com/geohacker/india/mas
     });
 })();
 
+// buttons to clear selection and reset map view
 function MapControls({ onClear, hasSelection }) {
     const map = useMap();
-    const handleReset = () => map.setView([22.5937, 82.9629], 5);
+
+    function handleReset() {
+        map.setView([22.5937, 82.9629], 5);
+    }
 
     return (
-        <div className={styles.controls}>
+        <div className="btns">
             {hasSelection && (
-                <button
-                    onClick={onClear}
-                    className={styles.controlBtn}
-                >
-                    <span className={styles.dangerIcon}>✕</span> Clear Selection
+                <button onClick={onClear} className="btn">
+                    <span className="x-icon">x</span> Clear Selection
                 </button>
             )}
-            <button
-                onClick={handleReset}
-                className={styles.controlBtn}
-            >
-                <span>↺</span> Reset Map View
+            <button onClick={handleReset} className="btn">
+                <span>R</span> Reset Map View
             </button>
         </div>
     );
 }
 
+// draws the curved flow lines between states on the map
 function FlowLines({ flows, flowType, selectedState, threshold }) {
     const map = useMap();
     const linesLayerRef = useRef(L.layerGroup());
@@ -110,35 +118,40 @@ function FlowLines({ flows, flowType, selectedState, threshold }) {
 
         if (!selectedState || flows.length === 0) return;
 
-        // filter based on settings
-        const filtered = flows.filter(f => {
-            if (f.count < threshold) return false;
-            if (flowType === 'inflow') {
-                return f.destination === selectedState;
-            } else {
-                return f.origin === selectedState;
-            }
-        }).filter(f => getCoords(f.origin) && getCoords(f.destination));
+        // filter flows based on the selected state and threshold
+        const filtered = [];
+        for (let i = 0; i < flows.length; i++) {
+            const f = flows[i];
+            if (f.count < threshold) continue;
 
-        // draw the curves
-        filtered.forEach(f => {
+            // check if this flow is for our selected state
+            if (flowType === 'inflow' && f.destination !== selectedState) continue;
+            if (flowType === 'outflow' && f.origin !== selectedState) continue;
+
+            // make sure both origin and destination have coordinates
+            if (!getCoords(f.origin) || !getCoords(f.destination)) continue;
+
+            filtered.push(f);
+        }
+
+        // draw a curved line for each flow
+        for (let i = 0; i < filtered.length; i++) {
+            const f = filtered[i];
             const start = getCoords(f.origin);
             const end = getCoords(f.destination);
             const color = flowType === 'inflow' ? '#3b82f6' : '#f97316';
             const { control } = getBezierPoints(start, end);
 
+            // line thickness based on how many migrants (log scale)
+            const lineWeight = Math.max(1, Math.log10(f.count) * 1.5);
+
             const curve = L.curve(
                 ['M', start, 'Q', control, end],
-                {
-                    color,
-                    weight: Math.max(1, Math.log10(f.count) * 1.5),
-                    opacity: 0.6,
-                    fill: false
-                }
+                { color: color, weight: lineWeight, opacity: 0.6, fill: false }
             );
-            curve.bindTooltip(`${f.origin} → ${f.destination}: ${f.count.toLocaleString()}`);
+            curve.bindTooltip(`${f.origin} -> ${f.destination}: ${f.count.toLocaleString()}`);
             linesLayer.addLayer(curve);
-        });
+        }
 
         linesLayer.addTo(map);
 
@@ -150,50 +163,60 @@ function FlowLines({ flows, flowType, selectedState, threshold }) {
     return null;
 }
 
-function IndiaGeoJSON({ onStateClick, selectedState }) {
+// loads and renders the india geojson map with state boundaries
+function IndiaGeoJSON({ onStateClick, selectedState, flowType }) {
     const [geoData, setGeoData] = useState(null);
 
+    // load geojson data from github
     useEffect(() => {
         fetch(INDIA_GEOJSON_URL)
-            .then(res => res.json())
-            .then(data => setGeoData(data))
-            .catch(err => console.error("Failed to load GeoJSON:", err));
+            .then(function (res) { return res.json(); })
+            .then(function (data) { setGeoData(data); })
+            .catch(function (err) { console.error("Failed to load GeoJSON:", err); });
     }, []);
 
     if (!geoData) return null;
 
-    const style = (feature) => {
+    // style for each state on the map
+    function getStateStyle(feature) {
         const stateName = normalizeName(feature.properties.NAME_1);
         const isSelected = stateName === selectedState;
+
+        // different colors for inflow vs outflow
+        const borderColor = flowType === 'inflow' ? '#3b82f6' : 'rgba(249, 115, 22, 0.6)';
+        const fillColor = flowType === 'inflow' ? '#bfdbfe' : 'rgba(249, 115, 22, 0.22)';
+
         return {
-            color: isSelected ? '#2563eb' : '#6b7280',
+            color: isSelected ? borderColor : '#6b7280',
             weight: isSelected ? 3 : 1,
-            fillColor: isSelected ? '#bfdbfe' : '#ffffff',
+            fillColor: isSelected ? fillColor : '#ffffff',
             fillOpacity: isSelected ? 0.4 : 0.1
         };
-    };
+    }
 
-    const onEachFeature = (feature, layer) => {
+    // add tooltip and click handler for each state
+    function onEachFeature(feature, layer) {
         const stateName = normalizeName(feature.properties.NAME_1);
         layer.bindTooltip(stateName, { sticky: true });
         layer.on({
-            click: () => onStateClick(stateName),
-            mouseover: (e) => {
+            click: function () { onStateClick(stateName); },
+            mouseover: function (e) {
                 if (normalizeName(feature.properties.NAME_1) !== selectedState) {
                     e.target.setStyle({ fillOpacity: 0.3, weight: 2 });
                 }
             },
-            mouseout: (e) => {
+            mouseout: function (e) {
                 if (normalizeName(feature.properties.NAME_1) !== selectedState) {
                     e.target.setStyle({ fillOpacity: 0.1, weight: 1 });
                 }
             }
         });
-    };
+    }
 
-    return <GeoJSON data={geoData} style={style} onEachFeature={onEachFeature} key={selectedState} />;
+    return <GeoJSON data={geoData} style={getStateStyle} onEachFeature={onEachFeature} key={`${selectedState}-${flowType}`} />;
 }
 
+// main map component
 export default function MapView({ flows, flowType, selectedState, onStateClick, threshold, onClearSelection }) {
     return (
         <MapContainer
@@ -213,7 +236,7 @@ export default function MapView({ flows, flowType, selectedState, onStateClick, 
             />
 
             <MapControls onClear={onClearSelection} hasSelection={!!selectedState} />
-            <IndiaGeoJSON onStateClick={onStateClick} selectedState={selectedState} />
+            <IndiaGeoJSON onStateClick={onStateClick} selectedState={selectedState} flowType={flowType} />
             <FlowLines
                 flows={flows}
                 flowType={flowType}
@@ -223,3 +246,4 @@ export default function MapView({ flows, flowType, selectedState, onStateClick, 
         </MapContainer>
     );
 }
+

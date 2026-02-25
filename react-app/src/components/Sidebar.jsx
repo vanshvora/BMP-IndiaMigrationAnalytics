@@ -1,5 +1,6 @@
-import styles from './Sidebar.module.css';
+import './Sidebar.css';
 
+// sidebar component with controls for the map
 export default function Sidebar({
     flows,
     flowType,
@@ -10,44 +11,44 @@ export default function Sidebar({
     onCollapse
 }) {
     return (
-        <div className={styles.container}>
-            <div className={styles.header}>
-                <h1 className={styles.title}>Controls</h1>
+        <div className="wrapper">
+            <div className="top">
+                <h1 className="heading">Controls</h1>
                 <button
                     onClick={onCollapse}
-                    className={styles.collapseBtn}
+                    className="hide-btn"
                     title="Collapse sidebar"
                 >
-                    <span className={styles.collapseIcon}>«</span>
+                    <span className="arrow">{"<<"}</span>
                 </button>
             </div>
 
-            {/* Flow direction toggle */}
-            <div className={styles.section}>
-                <label className={styles.label}>View Context</label>
-                <div className={styles.toggleGroup}>
+            {/* toggle between inflow and outflow */}
+            <div className="group">
+                <label className="label">View Context</label>
+                <div className="tabs">
                     <button
                         onClick={() => setFlowType('inflow')}
-                        className={`${styles.toggleBtn} ${flowType === 'inflow' ? styles.toggleBtnActive : ''}`}
+                        className={`tab ${flowType === 'inflow' ? 'active' : ''}`}
                     >
                         Inflow
                     </button>
                     <button
                         onClick={() => setFlowType('outflow')}
-                        className={`${styles.toggleBtn} ${flowType === 'outflow' ? styles.toggleBtnActive : ''}`}
+                        className={`tab ${flowType === 'outflow' ? 'active' : ''}`}
                     >
                         Outflow
                     </button>
                 </div>
             </div>
 
-            {/* Threshold slider */}
-            <div className={styles.section}>
-                <label className={styles.label}>Filter</label>
+            {/* slider to set minimum migrant threshold */}
+            <div className="group">
+                <label className="label">Filter</label>
                 <div>
-                    <div className={styles.rowBetween}>
-                        <span className={styles.rowText}>Min. Migrants</span>
-                        <span className={styles.rowValue}>{threshold.toLocaleString()}</span>
+                    <div className="row">
+                        <span className="row-label">Min. Migrants</span>
+                        <span className="row-num">{threshold.toLocaleString()}</span>
                     </div>
                     <input
                         type="range"
@@ -56,21 +57,21 @@ export default function Sidebar({
                         step="500"
                         value={threshold}
                         onChange={(e) => setThreshold(parseInt(e.target.value))}
-                        className={styles.range}
+                        className="slider"
                     />
                 </div>
             </div>
 
-            <hr className={styles.divider} />
+            <hr className="line" />
 
-            {/* Show selected state */}
-            <div className={styles.body}>
+            {/* show which state is currently selected */}
+            <div className="body">
                 {selectedState ? (
                     <div>
-                        <h2 className={styles.selectedTitle}>{selectedState}</h2>
+                        <h2 className="state-name">{selectedState}</h2>
                     </div>
                 ) : (
-                    <div className={styles.emptyHint}>
+                    <div className="hint">
                         Click on a state on the map to view flows.
                     </div>
                 )}
@@ -78,3 +79,4 @@ export default function Sidebar({
         </div>
     );
 }
+

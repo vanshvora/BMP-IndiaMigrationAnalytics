@@ -1,4 +1,6 @@
-// Coordinates for Indian states
+// coordinates for all Indian states - used for map markers and flow lines
+// got these from google maps
+
 export const INDIAN_STATES_NORM = [
     "JAMMU & KASHMIR", "HIMACHAL PRADESH", "PUNJAB", "CHANDIGARH", "UTTARAKHAND",
     "HARYANA", "NCT OF DELHI", "RAJASTHAN", "UTTAR PRADESH", "BIHAR", "SIKKIM",
@@ -9,46 +11,47 @@ export const INDIAN_STATES_NORM = [
     "ANDAMAN & NICOBAR ISLANDS", "TELANGANA"
 ];
 
+// lat, lng for each state
 export const COORDINATES = {
-    "JAMMU & KASHMIR": [34.0837, 74.7973],
-    "HIMACHAL PRADESH": [31.1048, 77.1734],
-    "PUNJAB": [30.7333, 76.7794],
+    "JAMMU & KASHMIR": [33.7782, 76.5762],
+    "LADAKH": [34.2996, 78.2932],
+    "HIMACHAL PRADESH": [31.9272, 77.1828],
+    "PUNJAB": [31.1471, 75.3412],
     "CHANDIGARH": [30.7333, 76.7794],
-    "UTTARAKHAND": [30.3165, 78.0322],
+    "UTTARAKHAND": [30.0668, 79.0193],
     "HARYANA": [29.0588, 76.0856],
-    "NCT OF DELHI": [28.6139, 77.2090],
-    "RAJASTHAN": [26.9124, 75.7873],
+    "NCT OF DELHI": [28.7041, 77.1025],
+    "RAJASTHAN": [27.0238, 74.2179],
     "UTTAR PRADESH": [26.8467, 80.9462],
-    "BIHAR": [25.5941, 85.1376],
-    "SIKKIM": [27.3314, 88.6138],
-    "ARUNACHAL PRADESH": [27.0844, 93.6053],
-    "NAGALAND": [25.6701, 94.1077],
-    "MANIPUR": [24.8170, 93.9368],
-    "MIZORAM": [23.7271, 92.7176],
-    "TRIPURA": [23.8315, 91.2868],
-    "MEGHALAYA": [25.5788, 91.8933],
-    "ASSAM": [26.1158, 91.7086],
-    "WEST BENGAL": [22.5726, 88.3639],
-    "JHARKHAND": [23.3441, 85.3096],
-    "ODISHA": [20.2961, 85.8245],
-    "CHHATTISGARH": [21.2514, 81.6296],
-    "MADHYA PRADESH": [23.2599, 77.4126],
-    "GUJARAT": [23.0225, 72.5714],
-    "DAMAN & DIU": [20.4283, 72.8397],
-    "DADRA & NAGAR HAVELI": [20.2762, 73.0083],
+    "BIHAR": [25.0961, 85.3131],
+    "SIKKIM": [27.5330, 88.5122],
+    "ARUNACHAL PRADESH": [28.2180, 94.7278],
+    "NAGALAND": [26.1584, 94.5624],
+    "MANIPUR": [24.6637, 93.9063],
+    "MIZORAM": [23.1645, 92.9376],
+    "TRIPURA": [23.9408, 91.9882],
+    "MEGHALAYA": [25.4670, 91.3662],
+    "ASSAM": [26.2006, 92.9376],
+    "WEST BENGAL": [22.9868, 87.8550],
+    "JHARKHAND": [23.6102, 85.2799],
+    "ODISHA": [20.9517, 85.0985],
+    "CHHATTISGARH": [21.2787, 81.8661],
+    "MADHYA PRADESH": [22.9734, 78.6569],
+    "GUJARAT": [22.2587, 71.1924],
+    "DADRA & NAGAR HAVELI AND DAMAN & DIU": [20.1809, 73.0169],
     "MAHARASHTRA": [19.7515, 75.7139],
-    "GOA": [15.4909, 73.8278],
+    "GOA": [15.2993, 74.1240],
     "ANDHRA PRADESH": [15.9129, 79.7400],
     "KARNATAKA": [15.3173, 75.7139],
-    "LAKSHADWEEP": [10.5667, 72.6417],
+    "LAKSHADWEEP": [10.0000, 73.0000],
     "KERALA": [10.8505, 76.2711],
     "TAMIL NADU": [11.1271, 78.6569],
     "PUDUCHERRY": [11.9416, 79.8083],
-    "ANDAMAN & NICOBAR ISLANDS": [11.6234, 92.7265],
+    "ANDAMAN & NICOBAR ISLANDS": [11.7401, 92.6586],
     "TELANGANA": [18.1124, 79.0193]
 };
 
-// international countries - got these from google maps
+// international country coordinates
 export const INTERNATIONAL_COORDINATES = {
     "NEPAL": [28.3949, 84.1240],
     "BANGLADESH": [23.6850, 90.3563],
@@ -86,16 +89,22 @@ export const INTERNATIONAL_COORDINATES = {
     "FIJI": [-17.7134, 178.0650]
 };
 
-// normalize state names to match between csv and geojson
+// this function normalizes the state names so they match between csv and geojson
+// because the names are written differently in different files
 export function normalizeName(name) {
     if (!name) return "";
     let n = name.toUpperCase().trim();
-    n = n.replace(/\s*\(\d+\)$/, ""); // remove codes like (01)
-    n = n.replace(/^STATE\s*-\s*/, ""); // remove "State - " prefix
-    n = n.replace(/^UT\s*-\s*/, ""); // remove "UT - " prefix
+
+    // remove stuff like (01), (02) etc at the end
+    n = n.replace(/\s*\(\d+\)$/, "");
+
+    // remove prefixes like "State - " and "UT - "
+    n = n.replace(/^STATE\s*-\s*/, "");
+    n = n.replace(/^UT\s*-\s*/, "");
     n = n.trim();
 
-    // mapping for different name formats
+    // some names are written differently in the csv vs geojson
+    // this maps them to one standard name
     const mapping = {
         "DELHI": "NCT OF DELHI",
         "NCT OF DELHI": "NCT OF DELHI",
@@ -110,15 +119,21 @@ export function normalizeName(name) {
         "DAMAN AND DIU": "DAMAN & DIU",
     };
 
-    return mapping[n] || n;
+    if (mapping[n]) {
+        return mapping[n];
+    }
+    return n;
 }
 
-// calculate bezier curve control point for flow lines
+// this calculates a curved control point for drawing flow lines on the map
+// using bezier curves so the lines look nice and dont overlap
 export function getBezierPoints(start, end) {
     const midLat = (start[0] + end[0]) / 2;
     const midLng = (start[1] + end[1]) / 2;
     const dist = Math.sqrt(Math.pow(end[0] - start[0], 2) + Math.pow(end[1] - start[1], 2));
-    return {
-        control: [midLat + (dist * 0.2), midLng + (dist * 0.2)]
-    };
+
+    // offset the control point a little bit so the curve looks good
+    const controlPoint = [midLat + (dist * 0.2), midLng + (dist * 0.2)];
+
+    return { control: controlPoint };
 }
