@@ -60,7 +60,10 @@ function HorizontalBarChart({ data, maxValue, color, showHighest, onToggle }) {
 
 // pie chart for showing male/female or urban/rural split
 function BreakdownPie({ labels, values, colors }) {
-    const total = values[0] + values[1];
+    let total = 0;
+    for (let i = 0; i < values.length; i++) {
+        total += Number(values[i]) || 0;
+    }
 
     // chart.js data format
     const chartData = {
@@ -68,7 +71,7 @@ function BreakdownPie({ labels, values, colors }) {
         datasets: [{
             data: values,
             backgroundColor: colors,
-            borderColor: ['#ffffff', '#ffffff'],
+            borderColor: Array(values.length).fill('#ffffff'),
             borderWidth: 2,
             hoverOffset: 8,
         }]
@@ -146,6 +149,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
     const [d12Data, setD12Data] = useState([]);
+    const [d04Data, setD04Data] = useState([]);
 
     // load D02 (duration data) and D03 (reasons data) csv files
     useEffect(() => {
@@ -221,6 +225,33 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             .catch(function (err) {
                 console.error('D12 fetch error:', err);
                 setD12Data([]);
+            });
+
+        // load education-level migration data
+        fetch('/D04_cleaned.csv')
+            .then(function (r) { return r.text(); })
+            .then(function (txt) {
+                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
+                const rows = [];
+                for (let i = 0; i < result.data.length; i++) {
+                    const row = result.data[i];
+                    const area = normalizeName(row.AreaName);
+
+                    // D04 has an India aggregate row; keep only state-level records
+                    if (area === 'INDIA') continue;
+                    if (!INDIAN_STATES_NORM.includes(area)) continue;
+
+                    rows.push({
+                        ...row,
+                        AreaName: area
+                    });
+                }
+                console.log('D04 education data loaded:', rows.length);
+                setD04Data(rows);
+            })
+            .catch(function (err) {
+                console.error('D04 fetch error:', err);
+                setD04Data([]);
             });
     }, []);
 
@@ -412,6 +443,50 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         .sort(function (a, b) { return b[ageRankMetric] - a[ageRankMetric]; })
         .slice(0, 10);
 
+    // ---- Education Profile data (D04) ----
+    let selectedEducationRow = null;
+    for (let i = 0; i < d04Data.length; i++) {
+        if (d04Data[i].AreaName === selectedState) {
+            selectedEducationRow = d04Data[i];
+            break;
+        }
+    }
+
+    const illiteratePersons = Number(selectedEducationRow?.Illiterate_Persons) || 0;
+    const literatePersons = Number(selectedEducationRow?.Literate_Persons) || 0;
+
+    const belowMatricPersons = Number(selectedEducationRow?.BelowMatric_Persons) || 0;
+    const matricToGradPersons = Number(selectedEducationRow?.MatricToGrad_Persons) || 0;
+    const techDiplomaPersons = Number(selectedEducationRow?.TechDiploma_Persons) || 0;
+    const graduatePersons = Number(selectedEducationRow?.Graduate_Persons) || 0;
+    const techDegreePersons = Number(selectedEducationRow?.TechDegree_Persons) || 0;
+
+    const literateMales = Number(selectedEducationRow?.Literate_Males) || 0;
+    const literateFemales = Number(selectedEducationRow?.Literate_Females) || 0;
+
+    const belowMatricMales = Number(selectedEducationRow?.BelowMatric_Males) || 0;
+    const belowMatricFemales = Number(selectedEducationRow?.BelowMatric_Females) || 0;
+    const matricToGradMales = Number(selectedEducationRow?.MatricToGrad_Males) || 0;
+    const matricToGradFemales = Number(selectedEducationRow?.MatricToGrad_Females) || 0;
+    const techDiplomaMales = Number(selectedEducationRow?.TechDiploma_Males) || 0;
+    const techDiplomaFemales = Number(selectedEducationRow?.TechDiploma_Females) || 0;
+    const graduateMales = Number(selectedEducationRow?.Graduate_Males) || 0;
+    const graduateFemales = Number(selectedEducationRow?.Graduate_Females) || 0;
+    const techDegreeMales = Number(selectedEducationRow?.TechDegree_Males) || 0;
+    const techDegreeFemales = Number(selectedEducationRow?.TechDegree_Females) || 0;
+
+    const literateKnownTotal = belowMatricPersons + matricToGradPersons + techDiplomaPersons + graduatePersons + techDegreePersons;
+    const literateUnclassified = Math.max(0, literatePersons - literateKnownTotal);
+    const literateKnownMales = belowMatricMales + matricToGradMales + techDiplomaMales + graduateMales + techDegreeMales;
+    const literateKnownFemales = belowMatricFemales + matricToGradFemales + techDiplomaFemales + graduateFemales + techDegreeFemales;
+    const literateUnclassifiedMales = Math.max(0, literateMales - literateKnownMales);
+    const literateUnclassifiedFemales = Math.max(0, literateFemales - literateKnownFemales);
+
+    const literacyTotal = illiteratePersons + literatePersons;
+    const educationChartLabels = ['Below Matric', 'Matric to < Graduate', 'Technical Diploma', 'Graduate+', 'Technical Degree', 'Literate (Unclassified)'];
+    const educationMaleValues = [belowMatricMales, matricToGradMales, techDiplomaMales, graduateMales, techDegreeMales, literateUnclassifiedMales];
+    const educationFemaleValues = [belowMatricFemales, matricToGradFemales, techDiplomaFemales, graduateFemales, techDegreeFemales, literateUnclassifiedFemales];
+
     // if no state is selected, show a message
     if (!selectedState) {
         return (
@@ -463,6 +538,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     }
 
     const topMetricLabel = ageRankMetric === 'youth' ? 'Youth (15-29)' : 'Elderly (60+)';
+    const topMetricColor = ageRankMetric === 'youth' ? '#3b82f6' : '#f97316';
+    const literatePercent = literacyTotal > 0 ? ((literatePersons / literacyTotal) * 100).toFixed(1) : '0.0';
+    const illiteratePercent = literacyTotal > 0 ? ((illiteratePersons / literacyTotal) * 100).toFixed(1) : '0.0';
 
     // calculate urban share percentage
     let urbanShare = 0;
@@ -701,38 +779,47 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                 </div>
             </div>
 
-            {/* third row - age profile from D12 */}
-            <div className="age-row">
-                <div className="card short-card">
+            {/* third row - pie cards side by side */}
+            <div className="pie-row">
+                <div className="card short-card pie-card">
                     <h3 className="card-title">Age Profile of Migrants (D12)</h3>
-                    <div className="chart-box">
-                        {ageGrandTotal > 0 ? (
-                            <Pie
-                                data={{
-                                    labels: ageSegmentLabels,
-                                    datasets: [{
-                                        data: ageSegmentTotals,
-                                        backgroundColor: ['#06b6d4', '#3b82f6', '#8b5cf6', '#f97316', '#64748b']
-                                    }]
-                                }}
-                                options={{
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: { legend: { position: 'bottom' } },
-                                    animation: false
-                                }}
-                            />
-                        ) : (
-                            <p className="no-data">No age data available</p>
-                        )}
-                    </div>
+                    {ageGrandTotal > 0 ? (
+                        <BreakdownPie
+                            labels={ageSegmentLabels}
+                            values={ageSegmentTotals}
+                            colors={['#06b6d4', '#3b82f6', '#8b5cf6', '#f97316', '#64748b']}
+                        />
+                    ) : (
+                        <p className="no-data">No age data available</p>
+                    )}
                     <div className="footer">
                         <span>Total: {ageGrandTotal.toLocaleString()}</span>
                     </div>
                 </div>
 
+                <div className="card short-card pie-card">
+                    <h3 className="card-title">Literacy Split (D04)</h3>
+                    {literacyTotal > 0 ? (
+                        <BreakdownPie
+                            labels={['Literate', 'Illiterate']}
+                            values={[literatePersons, illiteratePersons]}
+                            colors={['#22c55e', '#ef4444']}
+                        />
+                    ) : (
+                        <p className="no-data">No education data available</p>
+                    )}
+                    <div className="footer">
+                        <span>Literate: {literatePercent}%</span>
+                        <span>Illiterate: {illiteratePercent}%</span>
+                        <span>M:F (Literate) = {literateFemales > 0 ? (literateMales / literateFemales).toFixed(2) : 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* fourth row - bar insights */}
+            <div className="insight-row">
                 <div className="card short-card">
-                    <h3 className="card-title">Top 10 Counterpart States (Youth vs Elderly)</h3>
+                    <h3 className="card-title">Top 10 Counterpart States</h3>
                     <div className="age-sort-row">
                         <div className="sort-btns">
                             <button
@@ -755,22 +842,39 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                                 data={{
                                     labels: topAgeCounterparts.map((item) => item.state),
                                     datasets: [{
-                                        label: 'Youth (15-29)',
-                                        data: topAgeCounterparts.map((item) => item.youth),
-                                        backgroundColor: '#3b82f6'
-                                    }, {
-                                        label: 'Elderly (60+)',
-                                        data: topAgeCounterparts.map((item) => item.elderly),
-                                        backgroundColor: '#f97316'
+                                        label: topMetricLabel,
+                                        data: topAgeCounterparts.map((item) => item[ageRankMetric]),
+                                        backgroundColor: topMetricColor,
+                                        borderRadius: 6,
+                                        maxBarThickness: 28
                                     }]
                                 }}
                                 options={{
                                     indexAxis: 'y',
                                     responsive: true,
                                     maintainAspectRatio: false,
-                                    plugins: { legend: { display: true } },
+                                    plugins: {
+                                        legend: { display: false },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: function (ctx) {
+                                                    const row = topAgeCounterparts[ctx.dataIndex];
+                                                    const primary = Number(row?.[ageRankMetric]) || 0;
+                                                    const secondaryKey = ageRankMetric === 'youth' ? 'elderly' : 'youth';
+                                                    const secondaryLabel = ageRankMetric === 'youth' ? 'Elderly (60+)' : 'Youth (15-29)';
+                                                    const secondary = Number(row?.[secondaryKey]) || 0;
+                                                    return ` ${topMetricLabel}: ${primary.toLocaleString()} | ${secondaryLabel}: ${secondary.toLocaleString()}`;
+                                                }
+                                            }
+                                        }
+                                    },
                                     scales: {
-                                        x: { beginAtZero: true }
+                                        x: { beginAtZero: true },
+                                        y: {
+                                            ticks: {
+                                                font: { size: 10 }
+                                            }
+                                        }
                                     },
                                     animation: false
                                 }}
@@ -782,6 +886,64 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                     <div className="footer">
                         <span>Ranked by: {topMetricLabel}</span>
                         <span>Top-10 total: {topMetricTotal.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <div className="card short-card">
+                    <h3 className="card-title">Within Literate: Education Levels (Male vs Female)</h3>
+                    <div className="chart-box-tall">
+                        {literatePersons > 0 ? (
+                            <Bar
+                                data={{
+                                    labels: educationChartLabels,
+                                    datasets: [{
+                                        label: 'Males',
+                                        data: educationMaleValues,
+                                        backgroundColor: '#3b82f6',
+                                        maxBarThickness: 36,
+                                        borderRadius: 5,
+                                        categoryPercentage: 0.8,
+                                        barPercentage: 0.9
+                                    }, {
+                                        label: 'Females',
+                                        data: educationFemaleValues,
+                                        backgroundColor: '#ec4899',
+                                        maxBarThickness: 36,
+                                        borderRadius: 5,
+                                        categoryPercentage: 0.8,
+                                        barPercentage: 0.9
+                                    }]
+                                }}
+                                options={{
+                                    indexAxis: 'y',
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { display: true },
+                                        tooltip: {
+                                            callbacks: {
+                                                afterLabel: function (ctx) {
+                                                    const val = Number(ctx.parsed.x) || 0;
+                                                    const pct = literatePersons > 0 ? ((val / literatePersons) * 100).toFixed(1) : '0.0';
+                                                    return `Share of literate: ${pct}%`;
+                                                }
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        x: { beginAtZero: true }
+                                    },
+                                    animation: false
+                                }}
+                            />
+                        ) : (
+                            <p className="no-data">No literate breakdown data available</p>
+                        )}
+                    </div>
+                    <div className="footer">
+                        <span>Literate total: {literatePersons.toLocaleString()}</span>
+                        <span>Males: {literateMales.toLocaleString()} | Females: {literateFemales.toLocaleString()}</span>
+                        <span>Classified share: {literatePersons > 0 ? (((literatePersons - literateUnclassified) / literatePersons) * 100).toFixed(1) : '0.0'}%</span>
                     </div>
                 </div>
             </div>

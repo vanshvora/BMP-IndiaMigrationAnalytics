@@ -155,18 +155,41 @@
   .bottom-row {
     grid-template-columns: 1fr 1fr;
   }
+}
 
-  .age-row {
-    grid-template-columns: 1fr 1fr;
+.pie-row {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.insight-row {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 860px) {
+  .pie-row,
+  .insight-row {
+    grid-template-columns: 1fr;
   }
 }
 
-.age-row {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  align-items: stretch;
+.pie-card {
+  min-height: 335px;
+}
+
+.pie-row .pie-box {
+  height: 205px;
+}
+
+.pie-row .pie-content {
+  max-width: 255px;
 }
 
 .age-sort-row {
