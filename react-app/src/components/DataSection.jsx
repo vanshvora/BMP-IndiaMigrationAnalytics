@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Pie, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import Papa from 'papaparse';
-import { normalizeName } from '../utils/coordinates';
+import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
 import './DataSection.css';
 
 // register chart.js components we need
@@ -142,8 +142,10 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const [showHighest, setShowHighest] = useState(true);
     const [showMigrationList, setShowMigrationList] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
+    const [ageRankMetric, setAgeRankMetric] = useState('youth');
     const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
+    const [d12Data, setD12Data] = useState([]);
 
     // load D02 (duration data) and D03 (reasons data) csv files
     useEffect(() => {
@@ -190,6 +192,35 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             .catch(function (err) {
                 console.error('D03 cleaned fetch error:', err);
                 setD03Data([]);
+            });
+
+        // load age-wise migration data
+        fetch('/D12_cleaned.csv')
+            .then(function (r) { return r.text(); })
+            .then(function (txt) {
+                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
+                const rows = [];
+                for (let i = 0; i < result.data.length; i++) {
+                    const row = result.data[i];
+                    const area = normalizeName(row.AreaName);
+                    const origin = normalizeName(row.Origin || row.LastResidence);
+
+                    // D12 guardrail: keep only domestic state-to-state rows
+                    if (!INDIAN_STATES_NORM.includes(area)) continue;
+                    if (!INDIAN_STATES_NORM.includes(origin)) continue;
+
+                    rows.push({
+                        ...row,
+                        AreaName: area,
+                        Origin: origin
+                    });
+                }
+                console.log('D12 age data loaded:', rows.length);
+                setD12Data(rows);
+            })
+            .catch(function (err) {
+                console.error('D12 fetch error:', err);
+                setD12Data([]);
             });
     }, []);
 
@@ -256,6 +287,26 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         }
     }
 
+    // helper to sum multiple numeric columns from one row
+    function sumColumns(row, keys) {
+        let sum = 0;
+        for (let i = 0; i < keys.length; i++) {
+            sum += Number(row[keys[i]]) || 0;
+        }
+        return sum;
+    }
+
+    // D12 should align with interstate logic used by map flows
+    function rowMatchesStateD12(row) {
+        if (!row) return false;
+        if (row.AreaName === row.Origin) return false;
+        if (flowType === 'inflow') {
+            return row.AreaName === selectedState;
+        } else {
+            return row.Origin === selectedState;
+        }
+    }
+
     // ---- Duration of Stay data (D02) ----
     const durationKeys = ['Persons_LT1yr', 'Persons_1to4yr', 'Persons_5to9yr', 'Persons_10to19yr', 'Persons_20plusyr', 'Persons_DurNS'];
     const durationLabels = ['<1 yr', '1-4 yr', '5-9 yr', '10-19 yr', '20+ yr', 'Not stated'];
@@ -314,6 +365,53 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         femaleReasonTotals.push(sum);
     }
 
+    // ---- Age Profile data (D12) ----
+    const childrenAgeKeys = ['Persons_0to4', 'Persons_5to9', 'Persons_10to14'];
+    const youthAgeKeys = ['Persons_15to19', 'Persons_20to24', 'Persons_25to29'];
+    const workingAgeKeys = ['Persons_30to34', 'Persons_35to39', 'Persons_40to44', 'Persons_45to49', 'Persons_50to54', 'Persons_55to59'];
+    const elderlyAgeKeys = ['Persons_60to64', 'Persons_65to69', 'Persons_70to74', 'Persons_75to79', 'Persons_80plus'];
+    const ageNotStatedKeys = ['Persons_AgeNS'];
+
+    const ageSegmentLabels = ['Children (0-14)', 'Youth (15-29)', 'Working Age (30-59)', 'Elderly (60+)', 'Not stated'];
+    const ageSegmentTotals = [0, 0, 0, 0, 0];
+
+    const counterpartAgeMap = {};
+    for (let i = 0; i < d12Data.length; i++) {
+        const row = d12Data[i];
+        if (!rowMatchesStateD12(row)) continue;
+
+        const children = sumColumns(row, childrenAgeKeys);
+        const youth = sumColumns(row, youthAgeKeys);
+        const working = sumColumns(row, workingAgeKeys);
+        const elderly = sumColumns(row, elderlyAgeKeys);
+        const ageNS = sumColumns(row, ageNotStatedKeys);
+
+        ageSegmentTotals[0] += children;
+        ageSegmentTotals[1] += youth;
+        ageSegmentTotals[2] += working;
+        ageSegmentTotals[3] += elderly;
+        ageSegmentTotals[4] += ageNS;
+
+        const counterpartState = flowType === 'inflow' ? row.Origin : row.AreaName;
+        if (!counterpartAgeMap[counterpartState]) {
+            counterpartAgeMap[counterpartState] = { youth: 0, elderly: 0 };
+        }
+        counterpartAgeMap[counterpartState].youth += youth;
+        counterpartAgeMap[counterpartState].elderly += elderly;
+    }
+
+    const counterpartAgeRows = Object.entries(counterpartAgeMap).map(function ([state, metrics]) {
+        return {
+            state: state,
+            youth: metrics.youth,
+            elderly: metrics.elderly
+        };
+    });
+
+    const topAgeCounterparts = counterpartAgeRows
+        .sort(function (a, b) { return b[ageRankMetric] - a[ageRankMetric]; })
+        .slice(0, 10);
+
     // if no state is selected, show a message
     if (!selectedState) {
         return (
@@ -355,6 +453,16 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
 
     let femaleReasonTotal = 0;
     for (let i = 0; i < femaleReasonTotals.length; i++) femaleReasonTotal += femaleReasonTotals[i];
+
+    let ageGrandTotal = 0;
+    for (let i = 0; i < ageSegmentTotals.length; i++) ageGrandTotal += ageSegmentTotals[i];
+
+    let topMetricTotal = 0;
+    for (let i = 0; i < topAgeCounterparts.length; i++) {
+        topMetricTotal += topAgeCounterparts[i][ageRankMetric];
+    }
+
+    const topMetricLabel = ageRankMetric === 'youth' ? 'Youth (15-29)' : 'Elderly (60+)';
 
     // calculate urban share percentage
     let urbanShare = 0;
@@ -589,6 +697,91 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* third row - age profile from D12 */}
+            <div className="age-row">
+                <div className="card short-card">
+                    <h3 className="card-title">Age Profile of Migrants (D12)</h3>
+                    <div className="chart-box">
+                        {ageGrandTotal > 0 ? (
+                            <Pie
+                                data={{
+                                    labels: ageSegmentLabels,
+                                    datasets: [{
+                                        data: ageSegmentTotals,
+                                        backgroundColor: ['#06b6d4', '#3b82f6', '#8b5cf6', '#f97316', '#64748b']
+                                    }]
+                                }}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: { legend: { position: 'bottom' } },
+                                    animation: false
+                                }}
+                            />
+                        ) : (
+                            <p className="no-data">No age data available</p>
+                        )}
+                    </div>
+                    <div className="footer">
+                        <span>Total: {ageGrandTotal.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <div className="card short-card">
+                    <h3 className="card-title">Top 10 Counterpart States (Youth vs Elderly)</h3>
+                    <div className="age-sort-row">
+                        <div className="sort-btns">
+                            <button
+                                onClick={() => setAgeRankMetric('youth')}
+                                className={'sort-btn ' + (ageRankMetric === 'youth' ? 'sort-active' : '')}
+                            >
+                                Youth
+                            </button>
+                            <button
+                                onClick={() => setAgeRankMetric('elderly')}
+                                className={'sort-btn ' + (ageRankMetric === 'elderly' ? 'sort-active' : '')}
+                            >
+                                Elderly
+                            </button>
+                        </div>
+                    </div>
+                    <div className="chart-box-tall">
+                        {topAgeCounterparts.length > 0 ? (
+                            <Bar
+                                data={{
+                                    labels: topAgeCounterparts.map((item) => item.state),
+                                    datasets: [{
+                                        label: 'Youth (15-29)',
+                                        data: topAgeCounterparts.map((item) => item.youth),
+                                        backgroundColor: '#3b82f6'
+                                    }, {
+                                        label: 'Elderly (60+)',
+                                        data: topAgeCounterparts.map((item) => item.elderly),
+                                        backgroundColor: '#f97316'
+                                    }]
+                                }}
+                                options={{
+                                    indexAxis: 'y',
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: { legend: { display: true } },
+                                    scales: {
+                                        x: { beginAtZero: true }
+                                    },
+                                    animation: false
+                                }}
+                            />
+                        ) : (
+                            <p className="no-data">No age comparison data available</p>
+                        )}
+                    </div>
+                    <div className="footer">
+                        <span>Ranked by: {topMetricLabel}</span>
+                        <span>Top-10 total: {topMetricTotal.toLocaleString()}</span>
                     </div>
                 </div>
             </div>

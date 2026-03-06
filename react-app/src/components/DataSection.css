@@ -155,6 +155,24 @@
   .bottom-row {
     grid-template-columns: 1fr 1fr;
   }
+
+  .age-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.age-row {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.age-sort-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
 }
 
 .tall-card {
