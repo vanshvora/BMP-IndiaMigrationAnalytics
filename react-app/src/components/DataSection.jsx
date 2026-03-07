@@ -1,546 +1,234 @@
-import { useState, useEffect } from 'react';
-import { Pie, Bar } from 'react-chartjs-2';
+import { useEffect, useMemo, useState } from 'react';
+import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import Papa from 'papaparse';
 import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
+import {
+    getTopN,
+    getShare,
+    formatPercent,
+    getOverviewMetrics,
+    getDemographicMetrics,
+    getMigrationDriverMetrics,
+    getOverviewInsights,
+    getDemographicInsights,
+    getMigrationDriverInsights,
+    getCounterpartDrilldown,
+    getReasonDrilldown,
+    getAgeDrilldown,
+    getActivityDrilldown
+} from './dashboardInsights';
+import { BreakdownPie, InsightCard, KeyTakeawaysCard, DrilldownPanel, loadCsv } from './dashboardWidgets';
 import './DataSection.css';
 
-// register chart.js components we need
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
-// horizontal bar chart for showing top/bottom states
-function HorizontalBarChart({ data, maxValue, color, showHighest, onToggle }) {
-    if (data.length === 0) {
-        return <p className="no-data">No data available</p>;
-    }
-
-    return (
-        <div>
-            {/* toggle between highest and lowest */}
-            <div className="sort-row">
-                <div className="sort-btns">
-                    <button
-                        onClick={() => onToggle(false)}
-                        className={'sort-btn ' + (!showHighest ? 'sort-active' : '')}
-                    >
-                        lowest
-                    </button>
-                    <button
-                        onClick={() => onToggle(true)}
-                        className={'sort-btn ' + (showHighest ? 'sort-active' : '')}
-                    >
-                        highest
-                    </button>
-                </div>
-            </div>
-
-            {/* the actual bars */}
-            <div>
-                {data.map((item, i) => (
-                    <div key={i}>
-                        <div className="label-row">
-                            <span className="label-name">{item.name}</span>
-                            <span className="label-num">{item.value.toLocaleString()}</span>
-                        </div>
-                        <div className="progress-bg">
-                            <div
-                                className="progress-bar"
-                                style={{
-                                    width: `${Math.max(8, (item.value / maxValue) * 100)}%`,
-                                    backgroundColor: color
-                                }}
-                            />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-// pie chart for showing male/female or urban/rural split
-function BreakdownPie({ labels, values, colors }) {
-    let total = 0;
-    for (let i = 0; i < values.length; i++) {
-        total += Number(values[i]) || 0;
-    }
-
-    // chart.js data format
-    const chartData = {
-        labels: labels,
-        datasets: [{
-            data: values,
-            backgroundColor: colors,
-            borderColor: Array(values.length).fill('#ffffff'),
-            borderWidth: 2,
-            hoverOffset: 8,
-        }]
-    };
-
-    // chart.js options
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '55%',
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    padding: 16,
-                    usePointStyle: true,
-                    pointStyle: 'circle',
-                    font: { size: 12, weight: '500' },
-                    // custom labels to show count and percentage
-                    generateLabels: function (chart) {
-                        const ds = chart.data.datasets[0];
-                        return chart.data.labels.map(function (label, i) {
-                            const val = ds.data[i];
-                            let pct = 0;
-                            if (total > 0) {
-                                pct = ((val / total) * 100).toFixed(1);
-                            }
-                            return {
-                                text: `${label}: ${val.toLocaleString()} (${pct}%)`,
-                                fillStyle: ds.backgroundColor[i],
-                                strokeStyle: ds.borderColor[i],
-                                lineWidth: ds.borderWidth,
-                                pointStyle: 'circle',
-                                hidden: false,
-                                index: i,
-                            };
-                        });
-                    },
-                },
-            },
-            tooltip: {
-                callbacks: {
-                    label: function (ctx) {
-                        const val = ctx.parsed;
-                        let pct = 0;
-                        if (total > 0) {
-                            pct = ((val / total) * 100).toFixed(1);
-                        }
-                        return ` ${ctx.label}: ${val.toLocaleString()} (${pct}%)`;
-                    }
-                }
-            }
-        },
-        animation: {
-            animateRotate: true,
-            duration: 600,
-        }
-    };
-
-    return (
-        <div className="pie-box">
-            <div className="pie-content">
-                <Pie data={chartData} options={chartOptions} />
-            </div>
-        </div>
-    );
-}
-
-// main data section component - shows all the charts and tables
 export default function DataSection({ flows, flowType, selectedState, threshold }) {
-    const [showHighest, setShowHighest] = useState(true);
-    const [showMigrationList, setShowMigrationList] = useState(false);
-    const [showDetails, setShowDetails] = useState(false);
-    const [ageRankMetric, setAgeRankMetric] = useState('youth');
+    const [activeTab, setActiveTab] = useState('overview');
+    const [ageAltView, setAgeAltView] = useState(false);
+    const [literacyAltView, setLiteracyAltView] = useState(false);
+    const [reasonsAltView, setReasonsAltView] = useState(false);
+    const [counterpartAltView, setCounterpartAltView] = useState(false);
+
+    const [selectedCounterpartIndex, setSelectedCounterpartIndex] = useState(0);
+    const [selectedReasonIndex, setSelectedReasonIndex] = useState(0);
+    const [selectedAgeIndex, setSelectedAgeIndex] = useState(0);
+    const [selectedActivityIndex, setSelectedActivityIndex] = useState(0);
+
     const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
     const [d12Data, setD12Data] = useState([]);
     const [d04Data, setD04Data] = useState([]);
     const [d06Data, setD06Data] = useState([]);
+    const [d10Data, setD10Data] = useState([]);
 
-    // load D02 (duration data) and D03 (reasons data) csv files
-    useEffect(() => {
-        // load duration of stay data
-        fetch('/D02_cleaned.csv')
-            .then(function (r) { return r.text(); })
-            .then(function (txt) {
-                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-                // normalize the state names so they match
-                const rows = [];
-                for (let i = 0; i < result.data.length; i++) {
-                    const row = result.data[i];
-                    rows.push({
-                        ...row,
-                        AreaName: normalizeName(row.AreaName),
-                        Origin: normalizeName(row.Origin || row.LastResidence)
-                    });
-                }
-                console.log('D02 data loaded:', rows.length);
-                setD02Data(rows);
-            })
-            .catch(function (err) {
-                console.error('D02 fetch error:', err);
-                setD02Data([]);
-            });
+    useEffect(function () {
+        loadCsv('/D02_cleaned.csv', function (row) {
+            return { ...row, AreaName: normalizeName(row.AreaName), Origin: normalizeName(row.Origin || row.LastResidence) };
+        }, setD02Data, function (err) { console.error('D02 fetch error:', err); }, Papa);
 
-        // load reasons for migration data
-        fetch('/D03_cleaned.csv')
-            .then(function (r) { return r.text(); })
-            .then(function (txt) {
-                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-                const rows = [];
-                for (let i = 0; i < result.data.length; i++) {
-                    const row = result.data[i];
-                    rows.push({
-                        ...row,
-                        AreaName: normalizeName(row.AreaName),
-                        Origin: normalizeName(row.Origin || row.LastResidence)
-                    });
-                }
-                console.log('D03 cleaned data loaded:', rows.length);
-                setD03Data(rows);
-            })
-            .catch(function (err) {
-                console.error('D03 cleaned fetch error:', err);
-                setD03Data([]);
-            });
+        loadCsv('/D03_cleaned.csv', function (row) {
+            return { ...row, AreaName: normalizeName(row.AreaName), Origin: normalizeName(row.Origin || row.LastResidence) };
+        }, setD03Data, function (err) { console.error('D03 fetch error:', err); }, Papa);
 
-        // load age-wise migration data
-        fetch('/D12_cleaned.csv')
-            .then(function (r) { return r.text(); })
-            .then(function (txt) {
-                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-                const rows = [];
-                for (let i = 0; i < result.data.length; i++) {
-                    const row = result.data[i];
-                    const area = normalizeName(row.AreaName);
-                    const origin = normalizeName(row.Origin || row.LastResidence);
+        loadCsv('/D12_cleaned.csv', function (row) {
+            const area = normalizeName(row.AreaName);
+            const origin = normalizeName(row.Origin || row.LastResidence);
+            if (!INDIAN_STATES_NORM.includes(area)) return null;
+            if (!INDIAN_STATES_NORM.includes(origin)) return null;
+            return { ...row, AreaName: area, Origin: origin };
+        }, setD12Data, function (err) { console.error('D12 fetch error:', err); }, Papa);
 
-                    // D12 guardrail: keep only domestic state-to-state rows
-                    if (!INDIAN_STATES_NORM.includes(area)) continue;
-                    if (!INDIAN_STATES_NORM.includes(origin)) continue;
+        loadCsv('/D04_cleaned.csv', function (row) {
+            const area = normalizeName(row.AreaName);
+            if (area === 'INDIA') return null;
+            if (!INDIAN_STATES_NORM.includes(area)) return null;
+            return { ...row, AreaName: area };
+        }, setD04Data, function (err) { console.error('D04 fetch error:', err); }, Papa);
 
-                    rows.push({
-                        ...row,
-                        AreaName: area,
-                        Origin: origin
-                    });
-                }
-                console.log('D12 age data loaded:', rows.length);
-                setD12Data(rows);
-            })
-            .catch(function (err) {
-                console.error('D12 fetch error:', err);
-                setD12Data([]);
-            });
+        loadCsv('/D06_cleaned.csv', function (row) {
+            const area = normalizeName(row.AreaName);
+            if (!INDIAN_STATES_NORM.includes(area)) return null;
+            return { ...row, AreaName: area };
+        }, setD06Data, function (err) { console.error('D06 fetch error:', err); }, Papa);
 
-        // load education-level migration data
-        fetch('/D04_cleaned.csv')
-            .then(function (r) { return r.text(); })
-            .then(function (txt) {
-                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-                const rows = [];
-                for (let i = 0; i < result.data.length; i++) {
-                    const row = result.data[i];
-                    const area = normalizeName(row.AreaName);
-
-                    // D04 has an India aggregate row; keep only state-level records
-                    if (area === 'INDIA') continue;
-                    if (!INDIAN_STATES_NORM.includes(area)) continue;
-
-                    rows.push({
-                        ...row,
-                        AreaName: area
-                    });
-                }
-                console.log('D04 education data loaded:', rows.length);
-                setD04Data(rows);
-            })
-            .catch(function (err) {
-                console.error('D04 fetch error:', err);
-                setD04Data([]);
-            });
-
-        // load economic activity data
-        fetch('/D06_cleaned.csv')
-            .then(function (r) { return r.text(); })
-            .then(function (txt) {
-                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-                const rows = [];
-                for (let i = 0; i < result.data.length; i++) {
-                    const row = result.data[i];
-                    const area = normalizeName(row.AreaName);
-                    if (!INDIAN_STATES_NORM.includes(area)) continue;
-
-                    rows.push({
-                        ...row,
-                        AreaName: area
-                    });
-                }
-                console.log('D06 economic data loaded:', rows.length);
-                setD06Data(rows);
-            })
-            .catch(function (err) {
-                console.error('D06 fetch error:', err);
-                setD06Data([]);
-            });
+        loadCsv('/D10_cleaned.csv', function (row) {
+            const area = normalizeName(row.AreaName);
+            if (!INDIAN_STATES_NORM.includes(area)) return null;
+            return { ...row, AreaName: area };
+        }, setD10Data, function (err) { console.error('D10 fetch error:', err); }, Papa);
     }, []);
 
-    // filter flows for the selected state and threshold
-    const relevantFlows = [];
-    for (let i = 0; i < flows.length; i++) {
-        const f = flows[i];
-        if (f.count < threshold) continue;
-        if (flowType === 'inflow' && f.destination === selectedState) {
-            relevantFlows.push(f);
-        } else if (flowType === 'outflow' && f.origin === selectedState) {
-            relevantFlows.push(f);
+    useEffect(function () {
+        setActiveTab('overview');
+        setAgeAltView(false);
+        setLiteracyAltView(false);
+        setReasonsAltView(false);
+        setCounterpartAltView(false);
+        setSelectedCounterpartIndex(0);
+        setSelectedReasonIndex(0);
+        setSelectedAgeIndex(0);
+        setSelectedActivityIndex(0);
+    }, [selectedState, flowType, threshold]);
+
+    const relevantFlows = useMemo(function () {
+        const rows = [];
+        for (let i = 0; i < flows.length; i++) {
+            const f = flows[i];
+            if (f.count < threshold) continue;
+            if (flowType === 'inflow' && f.destination !== selectedState) continue;
+            if (flowType === 'outflow' && f.origin !== selectedState) continue;
+            rows.push(f);
         }
-    }
+        return rows;
+    }, [flows, flowType, selectedState, threshold]);
 
-    // calculate totals
-    let totalFlow = 0;
-    let totalMale = 0;
-    let totalFemale = 0;
-    let totalRural = 0;
-    let totalUrban = 0;
-    for (let i = 0; i < relevantFlows.length; i++) {
-        totalFlow += relevantFlows[i].count;
-        totalMale += relevantFlows[i].male;
-        totalFemale += relevantFlows[i].female;
-        totalRural += relevantFlows[i].rural;
-        totalUrban += relevantFlows[i].urban;
-    }
-
-    // sort flows for the bar chart
-    const sortedByHighest = [...relevantFlows].sort((a, b) => b.count - a.count);
-    const sortedByLowest = [...relevantFlows].sort((a, b) => a.count - b.count);
-
-    const sortedFlows = showHighest ? sortedByHighest : sortedByLowest;
-
-    // get top 5 states for the bar chart
-    const top5 = [];
-    for (let i = 0; i < Math.min(5, sortedFlows.length); i++) {
-        const f = sortedFlows[i];
-        top5.push({
-            name: flowType === 'inflow' ? f.origin : f.destination,
-            value: f.count
-        });
-    }
-
-    // find the max value for scaling the bars
-    let maxValue = 1;
-    for (let i = 0; i < top5.length; i++) {
-        if (top5[i].value > maxValue) {
-            maxValue = top5[i].value;
+    const counterpartRows = useMemo(function () {
+        const map = {};
+        for (let i = 0; i < relevantFlows.length; i++) {
+            const row = relevantFlows[i];
+            const key = flowType === 'inflow' ? row.origin : row.destination;
+            map[key] = (map[key] || 0) + (Number(row.count) || 0);
         }
+        return Object.entries(map).map(function (entry) {
+            return { name: entry[0], value: entry[1] };
+        }).sort(function (a, b) { return b.value - a.value; });
+    }, [relevantFlows, flowType]);
+
+    const stateTotalsRows = useMemo(function () {
+        const map = {};
+        for (let i = 0; i < flows.length; i++) {
+            if (flows[i].count < threshold) continue;
+            const key = flowType === 'inflow' ? flows[i].destination : flows[i].origin;
+            map[key] = (map[key] || 0) + (Number(flows[i].count) || 0);
+        }
+        return Object.entries(map).map(function (entry) {
+            return { state: entry[0], value: entry[1] };
+        }).sort(function (a, b) { return b.value - a.value; });
+    }, [flows, flowType, threshold]);
+
+    function sumFlowField(key) {
+        let s = 0;
+        for (let i = 0; i < relevantFlows.length; i++) s += Number(relevantFlows[i][key]) || 0;
+        return s;
     }
 
-    const chartTitle = `${showHighest ? 'Top' : 'Bottom'} State Origins`;
-    const accent = flowType === 'inflow' ? '#3b82f6' : 'rgba(249, 115, 22, 0.78)';
+    const totalFlow = sumFlowField('count');
+    const totalMale = sumFlowField('male');
+    const totalFemale = sumFlowField('female');
+    const totalUrban = sumFlowField('urban');
+    const totalRural = sumFlowField('rural');
 
-    // check if a D02/D03 row matches the selected state
     function rowMatchesState(row) {
         if (!row) return false;
-        if (flowType === 'inflow') {
-            return row.AreaName === selectedState;
-        } else {
-            return row.Origin === selectedState;
-        }
+        return flowType === 'inflow' ? row.AreaName === selectedState : row.Origin === selectedState;
     }
 
-    // helper to sum multiple numeric columns from one row
-    function sumColumns(row, keys) {
-        let sum = 0;
-        for (let i = 0; i < keys.length; i++) {
-            sum += Number(row[keys[i]]) || 0;
-        }
-        return sum;
-    }
-
-    // D12 should align with interstate logic used by map flows
     function rowMatchesStateD12(row) {
         if (!row) return false;
         if (row.AreaName === row.Origin) return false;
-        if (flowType === 'inflow') {
-            return row.AreaName === selectedState;
-        } else {
-            return row.Origin === selectedState;
-        }
+        return flowType === 'inflow' ? row.AreaName === selectedState : row.Origin === selectedState;
     }
 
-    // ---- Duration of Stay data (D02) ----
-    const durationKeys = ['Persons_LT1yr', 'Persons_1to4yr', 'Persons_5to9yr', 'Persons_10to19yr', 'Persons_20plusyr', 'Persons_DurNS'];
+    function sumColumns(row, keys) {
+        let s = 0;
+        for (let i = 0; i < keys.length; i++) s += Number(row[keys[i]]) || 0;
+        return s;
+    }
+
     const durationLabels = ['<1 yr', '1-4 yr', '5-9 yr', '10-19 yr', '20+ yr', 'Not stated'];
+    const durationKeys = ['Persons_LT1yr', 'Persons_1to4yr', 'Persons_5to9yr', 'Persons_10to19yr', 'Persons_20plusyr', 'Persons_DurNS'];
+    const durationTotals = durationKeys.map(function (key) {
+        let s = 0;
+        for (let i = 0; i < d02Data.length; i++) if (rowMatchesState(d02Data[i])) s += Number(d02Data[i][key]) || 0;
+        return s;
+    });
+    let durationTotal = 0;
+    for (let i = 0; i < durationTotals.length; i++) durationTotal += durationTotals[i];
 
-    // sum up duration values for the selected state
-    const durationTotals = [];
-    for (let k = 0; k < durationKeys.length; k++) {
-        let sum = 0;
-        for (let i = 0; i < d02Data.length; i++) {
-            if (rowMatchesState(d02Data[i])) {
-                sum += Number(d02Data[i][durationKeys[k]]) || 0;
-            }
-        }
-        durationTotals.push(sum);
-    }
-
-    // ---- Reasons for Migration data (D03) ----
     const reasonLabels = ['Work', 'Business', 'Education', 'Marriage', 'Post-birth', 'With household', 'Other'];
     const reasonKeys = ['Persons_Work', 'Persons_Business', 'Persons_Education', 'Persons_Marriage', 'Persons_MoveAfterBirth', 'Persons_MoveWithHH', 'Persons_Other'];
+    const reasonTotals = reasonKeys.map(function (key) {
+        let s = 0;
+        for (let i = 0; i < d03Data.length; i++) if (rowMatchesState(d03Data[i])) s += Number(d03Data[i][key]) || 0;
+        return s;
+    });
+    const reasonRows = reasonLabels.map(function (label, i) { return { label: label, value: reasonTotals[i] }; });
+    let reasonTotal = 0;
+    for (let i = 0; i < reasonTotals.length; i++) reasonTotal += reasonTotals[i];
 
-    // total reasons
-    const reasonTotals = [];
-    for (let k = 0; k < reasonKeys.length; k++) {
-        let sum = 0;
-        for (let i = 0; i < d03Data.length; i++) {
-            if (rowMatchesState(d03Data[i])) {
-                sum += Number(d03Data[i][reasonKeys[k]]) || 0;
-            }
-        }
-        reasonTotals.push(sum);
-    }
-
-    // male reasons
-    const maleReasonKeys = ['Males_Work', 'Males_Business', 'Males_Education', 'Males_Marriage', 'Males_MoveAfterBirth', 'Males_MoveWithHH', 'Males_Other'];
-    const maleReasonTotals = [];
-    for (let k = 0; k < maleReasonKeys.length; k++) {
-        let sum = 0;
-        for (let i = 0; i < d03Data.length; i++) {
-            if (rowMatchesState(d03Data[i])) {
-                sum += Number(d03Data[i][maleReasonKeys[k]]) || 0;
-            }
-        }
-        maleReasonTotals.push(sum);
-    }
-
-    // female reasons
-    const femaleReasonKeys = ['Females_Work', 'Females_Business', 'Females_Education', 'Females_Marriage', 'Females_MoveAfterBirth', 'Females_MoveWithHH', 'Females_Other'];
-    const femaleReasonTotals = [];
-    for (let k = 0; k < femaleReasonKeys.length; k++) {
-        let sum = 0;
-        for (let i = 0; i < d03Data.length; i++) {
-            if (rowMatchesState(d03Data[i])) {
-                sum += Number(d03Data[i][femaleReasonKeys[k]]) || 0;
-            }
-        }
-        femaleReasonTotals.push(sum);
-    }
-
-    // ---- Age Profile data (D12) ----
+    const ageLabels = ['Children (0-14)', 'Youth (15-29)', 'Working Age (30-59)', 'Elderly (60+)', 'Not stated'];
+    const ageTotals = [0, 0, 0, 0, 0];
     const childrenAgeKeys = ['Persons_0to4', 'Persons_5to9', 'Persons_10to14'];
     const youthAgeKeys = ['Persons_15to19', 'Persons_20to24', 'Persons_25to29'];
     const workingAgeKeys = ['Persons_30to34', 'Persons_35to39', 'Persons_40to44', 'Persons_45to49', 'Persons_50to54', 'Persons_55to59'];
     const elderlyAgeKeys = ['Persons_60to64', 'Persons_65to69', 'Persons_70to74', 'Persons_75to79', 'Persons_80plus'];
-    const ageNotStatedKeys = ['Persons_AgeNS'];
-
-    const ageSegmentLabels = ['Children (0-14)', 'Youth (15-29)', 'Working Age (30-59)', 'Elderly (60+)', 'Not stated'];
-    const ageSegmentTotals = [0, 0, 0, 0, 0];
-
-    const counterpartAgeMap = {};
     for (let i = 0; i < d12Data.length; i++) {
-        const row = d12Data[i];
-        if (!rowMatchesStateD12(row)) continue;
-
-        const children = sumColumns(row, childrenAgeKeys);
-        const youth = sumColumns(row, youthAgeKeys);
-        const working = sumColumns(row, workingAgeKeys);
-        const elderly = sumColumns(row, elderlyAgeKeys);
-        const ageNS = sumColumns(row, ageNotStatedKeys);
-
-        ageSegmentTotals[0] += children;
-        ageSegmentTotals[1] += youth;
-        ageSegmentTotals[2] += working;
-        ageSegmentTotals[3] += elderly;
-        ageSegmentTotals[4] += ageNS;
-
-        const counterpartState = flowType === 'inflow' ? row.Origin : row.AreaName;
-        if (!counterpartAgeMap[counterpartState]) {
-            counterpartAgeMap[counterpartState] = { youth: 0, elderly: 0 };
-        }
-        counterpartAgeMap[counterpartState].youth += youth;
-        counterpartAgeMap[counterpartState].elderly += elderly;
+        if (!rowMatchesStateD12(d12Data[i])) continue;
+        ageTotals[0] += sumColumns(d12Data[i], childrenAgeKeys);
+        ageTotals[1] += sumColumns(d12Data[i], youthAgeKeys);
+        ageTotals[2] += sumColumns(d12Data[i], workingAgeKeys);
+        ageTotals[3] += sumColumns(d12Data[i], elderlyAgeKeys);
+        ageTotals[4] += Number(d12Data[i].Persons_AgeNS) || 0;
     }
+    const ageRows = ageLabels.map(function (label, i) { return { label: label, value: ageTotals[i] }; });
+    let ageTotal = 0;
+    for (let i = 0; i < ageTotals.length; i++) ageTotal += ageTotals[i];
 
-    const counterpartAgeRows = Object.entries(counterpartAgeMap).map(function ([state, metrics]) {
-        return {
-            state: state,
-            youth: metrics.youth,
-            elderly: metrics.elderly
-        };
-    });
+    const educationRow = d04Data.find(function (row) { return row.AreaName === selectedState; }) || {};
+    const illiteratePersons = Number(educationRow.Illiterate_Persons) || 0;
+    const literatePersons = Number(educationRow.Literate_Persons) || 0;
+    const educationRows = [
+        { label: 'Below Matric', value: Number(educationRow.BelowMatric_Persons) || 0 },
+        { label: 'Matric to < Graduate', value: Number(educationRow.MatricToGrad_Persons) || 0 },
+        { label: 'Technical Diploma', value: Number(educationRow.TechDiploma_Persons) || 0 },
+        { label: 'Graduate+', value: Number(educationRow.Graduate_Persons) || 0 },
+        { label: 'Technical Degree', value: Number(educationRow.TechDegree_Persons) || 0 }
+    ];
+    const educationMaleValues = [Number(educationRow.BelowMatric_Males) || 0, Number(educationRow.MatricToGrad_Males) || 0, Number(educationRow.TechDiploma_Males) || 0, Number(educationRow.Graduate_Males) || 0, Number(educationRow.TechDegree_Males) || 0];
+    const educationFemaleValues = [Number(educationRow.BelowMatric_Females) || 0, Number(educationRow.MatricToGrad_Females) || 0, Number(educationRow.TechDiploma_Females) || 0, Number(educationRow.Graduate_Females) || 0, Number(educationRow.TechDegree_Females) || 0];
 
-    const topAgeCounterparts = counterpartAgeRows
-        .sort(function (a, b) { return b[ageRankMetric] - a[ageRankMetric]; })
-        .slice(0, 10);
+    const activityRow = d06Data.find(function (row) { return row.AreaName === selectedState; }) || {};
+    const activityRows = [
+        { label: 'Main Workers', value: Number(activityRow.MainWorkers_Persons) || 0 },
+        { label: 'Marginal Workers', value: Number(activityRow.MarginalWorkers_Persons) || 0 },
+        { label: 'Non-workers', value: Number(activityRow.NonWorkers_Persons) || 0 }
+    ];
+    const activityOtherValues = [activityRows[0].value, Math.max(0, activityRows[1].value - (Number(activityRow.MarginalSeeking_Persons) || 0)), Math.max(0, activityRows[2].value - (Number(activityRow.NonWorkersSeeking_Persons) || 0))];
+    const activitySeekingValues = [0, Number(activityRow.MarginalSeeking_Persons) || 0, Number(activityRow.NonWorkersSeeking_Persons) || 0];
 
-    // ---- Education Profile data (D04) ----
-    let selectedEducationRow = null;
-    for (let i = 0; i < d04Data.length; i++) {
-        if (d04Data[i].AreaName === selectedState) {
-            selectedEducationRow = d04Data[i];
-            break;
-        }
-    }
+    const maritalRow = d10Data.find(function (row) { return row.AreaName === selectedState; }) || {};
+    const maritalLabels = ['Never Married', 'Currently Married', 'Widowed', 'Separated', 'Divorced'];
+    const maritalMaleValues = [Number(maritalRow.NeverMarried_Males) || 0, Number(maritalRow.CurrMarried_Males) || 0, Number(maritalRow.Widowed_Males) || 0, Number(maritalRow.Separated_Males) || 0, Number(maritalRow.Divorced_Males) || 0];
+    const maritalFemaleValues = [Number(maritalRow.NeverMarried_Females) || 0, Number(maritalRow.CurrMarried_Females) || 0, Number(maritalRow.Widowed_Females) || 0, Number(maritalRow.Separated_Females) || 0, Number(maritalRow.Divorced_Females) || 0];
+    const maritalRows = [
+        { label: 'Never Married', value: Number(maritalRow.NeverMarried_Persons) || 0 },
+        { label: 'Currently Married', value: Number(maritalRow.CurrMarried_Persons) || 0 },
+        { label: 'Widowed', value: Number(maritalRow.Widowed_Persons) || 0 },
+        { label: 'Separated', value: Number(maritalRow.Separated_Persons) || 0 },
+        { label: 'Divorced', value: Number(maritalRow.Divorced_Persons) || 0 }
+    ];
 
-    const illiteratePersons = Number(selectedEducationRow?.Illiterate_Persons) || 0;
-    const literatePersons = Number(selectedEducationRow?.Literate_Persons) || 0;
-
-    const belowMatricPersons = Number(selectedEducationRow?.BelowMatric_Persons) || 0;
-    const matricToGradPersons = Number(selectedEducationRow?.MatricToGrad_Persons) || 0;
-    const techDiplomaPersons = Number(selectedEducationRow?.TechDiploma_Persons) || 0;
-    const graduatePersons = Number(selectedEducationRow?.Graduate_Persons) || 0;
-    const techDegreePersons = Number(selectedEducationRow?.TechDegree_Persons) || 0;
-
-    const literateMales = Number(selectedEducationRow?.Literate_Males) || 0;
-    const literateFemales = Number(selectedEducationRow?.Literate_Females) || 0;
-
-    const belowMatricMales = Number(selectedEducationRow?.BelowMatric_Males) || 0;
-    const belowMatricFemales = Number(selectedEducationRow?.BelowMatric_Females) || 0;
-    const matricToGradMales = Number(selectedEducationRow?.MatricToGrad_Males) || 0;
-    const matricToGradFemales = Number(selectedEducationRow?.MatricToGrad_Females) || 0;
-    const techDiplomaMales = Number(selectedEducationRow?.TechDiploma_Males) || 0;
-    const techDiplomaFemales = Number(selectedEducationRow?.TechDiploma_Females) || 0;
-    const graduateMales = Number(selectedEducationRow?.Graduate_Males) || 0;
-    const graduateFemales = Number(selectedEducationRow?.Graduate_Females) || 0;
-    const techDegreeMales = Number(selectedEducationRow?.TechDegree_Males) || 0;
-    const techDegreeFemales = Number(selectedEducationRow?.TechDegree_Females) || 0;
-
-    const literateKnownTotal = belowMatricPersons + matricToGradPersons + techDiplomaPersons + graduatePersons + techDegreePersons;
-    const literateUnclassified = Math.max(0, literatePersons - literateKnownTotal);
-    const literateKnownMales = belowMatricMales + matricToGradMales + techDiplomaMales + graduateMales + techDegreeMales;
-    const literateKnownFemales = belowMatricFemales + matricToGradFemales + techDiplomaFemales + graduateFemales + techDegreeFemales;
-    const literateUnclassifiedMales = Math.max(0, literateMales - literateKnownMales);
-    const literateUnclassifiedFemales = Math.max(0, literateFemales - literateKnownFemales);
-
-    const literacyTotal = illiteratePersons + literatePersons;
-    const educationChartLabels = ['Below Matric', 'Matric to < Graduate', 'Technical Diploma', 'Graduate+', 'Technical Degree', 'Literate (Unclassified)'];
-    const educationMaleValues = [belowMatricMales, matricToGradMales, techDiplomaMales, graduateMales, techDegreeMales, literateUnclassifiedMales];
-    const educationFemaleValues = [belowMatricFemales, matricToGradFemales, techDiplomaFemales, graduateFemales, techDegreeFemales, literateUnclassifiedFemales];
-
-    // ---- Economic Activity Profile (D06) ----
-    let selectedActivityRow = null;
-    for (let i = 0; i < d06Data.length; i++) {
-        if (d06Data[i].AreaName === selectedState) {
-            selectedActivityRow = d06Data[i];
-            break;
-        }
-    }
-
-    const mainWorkersPersons = Number(selectedActivityRow?.MainWorkers_Persons) || 0;
-    const marginalWorkersPersons = Number(selectedActivityRow?.MarginalWorkers_Persons) || 0;
-    const marginalSeekingPersons = Number(selectedActivityRow?.MarginalSeeking_Persons) || 0;
-    const nonWorkersPersons = Number(selectedActivityRow?.NonWorkers_Persons) || 0;
-    const nonWorkersSeekingPersons = Number(selectedActivityRow?.NonWorkersSeeking_Persons) || 0;
-
-    const marginalOtherPersons = Math.max(0, marginalWorkersPersons - marginalSeekingPersons);
-    const nonWorkersOtherPersons = Math.max(0, nonWorkersPersons - nonWorkersSeekingPersons);
-
-    const activityLabels = ['Main Workers', 'Marginal Workers', 'Non-workers'];
-    const activityOtherValues = [mainWorkersPersons, marginalOtherPersons, nonWorkersOtherPersons];
-    const activitySeekingValues = [0, marginalSeekingPersons, nonWorkersSeekingPersons];
-
-    const activityTotalPersons = mainWorkersPersons + marginalWorkersPersons + nonWorkersPersons;
-    const activitySeekingTotal = marginalSeekingPersons + nonWorkersSeekingPersons;
-    const activitySeekingShare = activityTotalPersons > 0
-        ? ((activitySeekingTotal / activityTotalPersons) * 100).toFixed(1)
-        : '0.0';
-
-    // if no state is selected, show a message
     if (!selectedState) {
         return (
             <div className="no-selection">
@@ -550,515 +238,78 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         );
     }
 
-    // telangana didnt exist in 2011 census
     if (selectedState === 'TELANGANA') {
         return (
             <div className="warning">
                 <h2 className="warning-title">TELANGANA</h2>
                 <div className="warning-box">
                     <p className="warning-bold">Data Not Available</p>
-                    <p className="warning-msg">
-                        Telangana was formed in June 2014. This data is from Census 2011.
-                    </p>
+                    <p className="warning-msg">Telangana was formed in June 2014. This dashboard uses Census 2011 datasets.</p>
                 </div>
             </div>
         );
     }
 
-    console.log('Selected state:', selectedState, 'flowType:', flowType);
-    console.log('Duration totals:', durationTotals);
-    console.log('Reason totals:', reasonTotals);
+    const overviewInsights = getOverviewInsights(getOverviewMetrics({ stateName: selectedState, flowType, totalFlow, totalMale, totalFemale, totalUrban, totalRural, counterpartRows, durationLabels, durationTotals, stateTotalsRows }));
+    const demographicInsights = getDemographicInsights(getDemographicMetrics({ ageRows, literatePersons, illiteratePersons, educationRows, activityRows, maritalRows }));
+    const driverMetrics = getMigrationDriverMetrics({ reasonRows, counterpartRows });
+    const driverInsights = getMigrationDriverInsights(driverMetrics);
 
-    // calculate some totals for the footer text
-    let durationTotal = 0;
-    for (let i = 0; i < durationTotals.length; i++) durationTotal += durationTotals[i];
+    const top5Counterparts = getTopN(counterpartRows, 5);
+    const top10Counterparts = getTopN(counterpartRows, 10);
+    const counterpartDrilldown = getCounterpartDrilldown(top5Counterparts, selectedCounterpartIndex, totalFlow, flowType);
+    const reasonDrilldown = getReasonDrilldown(reasonRows, selectedReasonIndex);
+    const ageDrilldown = getAgeDrilldown(ageRows, selectedAgeIndex);
+    const activityDrilldown = getActivityDrilldown(activityRows, selectedActivityIndex);
 
-    let reasonTotal = 0;
-    for (let i = 0; i < reasonTotals.length; i++) reasonTotal += reasonTotals[i];
-
-    let maleReasonTotal = 0;
-    for (let i = 0; i < maleReasonTotals.length; i++) maleReasonTotal += maleReasonTotals[i];
-
-    let femaleReasonTotal = 0;
-    for (let i = 0; i < femaleReasonTotals.length; i++) femaleReasonTotal += femaleReasonTotals[i];
-
-    let ageGrandTotal = 0;
-    for (let i = 0; i < ageSegmentTotals.length; i++) ageGrandTotal += ageSegmentTotals[i];
-
-    let topMetricTotal = 0;
-    for (let i = 0; i < topAgeCounterparts.length; i++) {
-        topMetricTotal += topAgeCounterparts[i][ageRankMetric];
-    }
-
-    const topMetricLabel = ageRankMetric === 'youth' ? 'Youth (15-29)' : 'Elderly (60+)';
-    const topMetricColor = ageRankMetric === 'youth' ? '#3b82f6' : '#f97316';
-    const literatePercent = literacyTotal > 0 ? ((literatePersons / literacyTotal) * 100).toFixed(1) : '0.0';
-    const illiteratePercent = literacyTotal > 0 ? ((illiteratePersons / literacyTotal) * 100).toFixed(1) : '0.0';
-
-    // calculate urban share percentage
-    let urbanShare = 0;
-    if ((totalUrban + totalRural) > 0) {
-        urbanShare = ((totalUrban / (totalUrban + totalRural)) * 100).toFixed(1);
-    }
+    const tabs = [
+        { id: 'overview', label: 'Overview', subtitle: 'High-level migration summary' },
+        { id: 'demographics', label: 'Demographics & Social Profile', subtitle: 'Who the migrants are' },
+        { id: 'drivers', label: 'Migration Drivers', subtitle: 'Why migration happens' }
+    ];
 
     return (
-        <div className="wrapper">
+        <div className="wrapper tabbed-dashboard">
             <div className="header">
                 <h2 className="state-name">{selectedState}</h2>
-                <p className="subtitle">
-                    Domestic {flowType === 'inflow' ? 'In-Migration' : 'Out-Migration'} - Census 2011
-                </p>
+                <p className="subtitle">Domestic {flowType === 'inflow' ? 'In-Migration' : 'Out-Migration'} - Census 2011</p>
             </div>
 
-            {/* total migration count */}
-            <div className="total-box">
-                <span className="total-tag">
-                    Total {flowType === 'inflow' ? 'Inflow' : 'Outflow'}
-                </span>
-                <div className="total-num">
-                    {totalFlow.toLocaleString()}
-                </div>
-            </div>
+            <div className="total-box"><span className="total-tag">Total {flowType === 'inflow' ? 'Inflow' : 'Outflow'}</span><div className="total-num">{totalFlow.toLocaleString()}</div></div>
 
-            {/* top row - bar chart, gender pie, urban/rural pie */}
-            <div className="top-row">
-                {/* bar chart with flip to migration list */}
-                <div className="card tall-card">
-                    <div className="flip-box">
-                        <div className={'flip-inner ' + (showMigrationList ? 'flipped' : '')}>
-                            {/* front side - bar chart */}
-                            <div className="side">
-                                <h3 className="card-title">{chartTitle}</h3>
-                                <HorizontalBarChart
-                                    data={top5}
-                                    maxValue={maxValue}
-                                    color={accent}
-                                    showHighest={showHighest}
-                                    onToggle={setShowHighest}
-                                />
-                                <div className="footer">
-                                    <span>Total: {totalFlow.toLocaleString()}</span>
-                                    <button className="link-btn" onClick={() => setShowMigrationList(true)}>
-                                        See migration list
-                                    </button>
-                                </div>
-                            </div>
+            <div className="tab-header">{tabs.map(function (tab) { return <button key={tab.id} type="button" className={`tab-btn ${activeTab === tab.id ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>; })}</div>
 
-                            {/* back side - full migration table */}
-                            <div className="side back-side">
-                                <h3 className="card-title">
-                                    State Migration ({flowType === 'inflow' ? 'From' : 'To'})
-                                </h3>
-                                <div className="table-wrap table-area">
-                                    <table className="table">
-                                        <thead className="thead">
-                                            <tr>
-                                                <th className="th">State</th>
-                                                <th className="th th-right">Migrants</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortedByHighest.map((f, i) => (
-                                                <tr key={i} className="tr">
-                                                    <td className="td">
-                                                        {flowType === 'inflow' ? f.origin : f.destination}
-                                                    </td>
-                                                    <td className="td td-right">
-                                                        {f.count.toLocaleString()}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {sortedByHighest.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={2} className="empty-row">
-                                                        No data above threshold
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div className="footer">
-                                    <span>Rows: {sortedByHighest.length.toLocaleString()}</span>
-                                    <button className="link-btn" onClick={() => setShowMigrationList(false)}>
-                                        Back to top states
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <section className="tab-panel">
+                <div className="tab-intro"><div className="tab-intro-text"><h3>{tabs.find(function (t) { return t.id === activeTab; })?.label}</h3><p>{tabs.find(function (t) { return t.id === activeTab; })?.subtitle}</p></div><KeyTakeawaysCard points={(activeTab === 'overview' ? overviewInsights : activeTab === 'demographics' ? demographicInsights : driverInsights).takeaways} /></div>
+                <div className="insight-grid">{(activeTab === 'overview' ? overviewInsights.cards : activeTab === 'demographics' ? demographicInsights.cards : driverInsights.cards).map(function (insight) { return <InsightCard key={insight.id} insight={insight} />; })}</div>
 
-                {/* gender breakdown pie chart */}
-                <div className="card tall-card">
-                    <h3 className="card-title">Gender Breakdown</h3>
-                    <BreakdownPie
-                        labels={['Male', 'Female']}
-                        values={[totalMale, totalFemale]}
-                        colors={['#3b82f6', '#ec4899']}
-                    />
-                    <div className="footer">
-                        <span>Total: {totalFlow.toLocaleString()}</span>
-                        <span>M:F Ratio = {totalFemale > 0 ? (totalMale / totalFemale).toFixed(2) : 'N/A'}</span>
+                {activeTab === 'overview' && (
+                    <div className="overview-grid">
+                        <div className="card tall-card"><h3 className="card-title">Top State {flowType === 'inflow' ? 'Origins' : 'Destinations'}</h3><div className="chart-box-tall">{top5Counterparts.length > 0 ? <Bar data={{ labels: top5Counterparts.map(function (r) { return r.name; }), datasets: [{ data: top5Counterparts.map(function (r) { return r.value; }), backgroundColor: flowType === 'inflow' ? '#3b82f6' : '#f97316', borderRadius: 6, maxBarThickness: 28 }] }} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } }, animation: false }} onClick={function (_e, els) { if (els.length > 0) setSelectedCounterpartIndex(els[0].index); }} /> : <p className="no-data">No counterpart data available</p>}</div><div className="footer"><span>Click a bar for drilldown.</span></div></div>
+                        <DrilldownPanel title="Counterpart Drilldown" detail={counterpartDrilldown} />
+                        <div className="card short-card"><h3 className="card-title">Gender Breakdown</h3><BreakdownPie labels={['Male', 'Female']} values={[totalMale, totalFemale]} colors={['#3b82f6', '#ec4899']} /><div className="footer"><span>Male: {formatPercent(getShare(totalMale, totalFlow))}</span><span>Female: {formatPercent(getShare(totalFemale, totalFlow))}</span></div></div>
+                        <div className="card short-card"><h3 className="card-title">Urban / Rural Breakdown</h3><BreakdownPie labels={['Urban', 'Rural']} values={[totalUrban, totalRural]} colors={['#8b5cf6', '#22c55e']} /><div className="footer"><span>Urban: {formatPercent(getShare(totalUrban, totalUrban + totalRural))}</span><span>Rural: {formatPercent(getShare(totalRural, totalUrban + totalRural))}</span></div></div>
+                        <div className="card short-card span-2"><h3 className="card-title">Duration of Stay</h3><div className="chart-box"><Bar data={{ labels: durationLabels, datasets: [{ label: 'Persons', data: durationTotals, backgroundColor: '#fb923c', borderRadius: 6, maxBarThickness: 42 }] }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } }, animation: false }} /></div><div className="footer"><span>Total duration records: {durationTotal.toLocaleString()}</span></div></div>
                     </div>
-                </div>
+                )}
 
-                {/* urban vs rural pie chart */}
-                <div className="card tall-card">
-                    <h3 className="card-title">Urban / Rural Breakdown</h3>
-                    <BreakdownPie
-                        labels={['Urban', 'Rural']}
-                        values={[totalUrban, totalRural]}
-                        colors={['#8b5cf6', '#22c55e']}
-                    />
-                    <div className="footer">
-                        <span>Total: {(totalUrban + totalRural).toLocaleString()}</span>
-                        <span>Urban share: {urbanShare}%</span>
+                {activeTab === 'demographics' && (
+                    <div className="demographic-grid">
+                        <div className="card tall-card"><h3 className="card-title">Age Profile of Migrants</h3>{!ageAltView ? <div className="chart-with-detail"><BreakdownPie labels={ageLabels} values={ageTotals} colors={['#06b6d4', '#3b82f6', '#8b5cf6', '#f97316', '#64748b']} onClick={function (_e, els) { if (els.length > 0) setSelectedAgeIndex(els[0].index); }} /><div className="inline-detail"><p className="inline-detail-title">Age Drilldown</p>{ageDrilldown ? <><p className="inline-detail-main">{ageDrilldown.title}</p><p className="inline-detail-text">{ageDrilldown.description}</p><p className="inline-detail-text">{ageDrilldown.value} ({ageDrilldown.share})</p></> : <p className="inline-detail-text">Click an age segment.</p>}</div></div> : <div className="alt-view-block"><p className="alt-view-title">Age Insight Summary</p><ul className="takeaway-list compact-list">{getTopN(ageRows, 3).map(function (row, i) { return <li key={row.label}>#{i + 1} {row.label}: {row.value.toLocaleString()} ({formatPercent(getShare(row.value, ageTotal))})</li>; })}</ul></div>}<div className="footer"><span>Total age records: {ageTotal.toLocaleString()}</span><button type="button" className="link-btn" onClick={() => setAgeAltView(!ageAltView)}>{ageAltView ? 'Back to chart' : 'View age insights'}</button></div></div>
+                        <div className="card tall-card"><h3 className="card-title">Literacy / Education</h3>{!literacyAltView ? <BreakdownPie labels={['Literate', 'Illiterate']} values={[literatePersons, illiteratePersons]} colors={['#22c55e', '#ef4444']} /> : <div className="chart-box-tall"><Bar data={{ labels: ['Below Matric', 'Matric to < Graduate', 'Technical Diploma', 'Graduate+', 'Technical Degree'], datasets: [{ label: 'Males', data: educationMaleValues, backgroundColor: '#3b82f6', borderRadius: 5, maxBarThickness: 28 }, { label: 'Females', data: educationFemaleValues, backgroundColor: '#ec4899', borderRadius: 5, maxBarThickness: 28 }] }} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { beginAtZero: true } }, animation: false }} /></div>}<div className="footer"><span>Literate share: {formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))}</span><button type="button" className="link-btn" onClick={() => setLiteracyAltView(!literacyAltView)}>{literacyAltView ? 'Back to literacy split' : 'View education split'}</button></div></div>
+                        <div className="card short-card"><h3 className="card-title">Economic Activity Profile</h3><div className="chart-box"><Bar data={{ labels: activityRows.map(function (row) { return row.label; }), datasets: [{ label: 'Other in category', data: activityOtherValues, backgroundColor: '#3b82f6', borderRadius: 5, maxBarThickness: 60 }, { label: 'Seeking for work', data: activitySeekingValues, backgroundColor: '#f97316', borderRadius: 5, maxBarThickness: 60 }] }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } }, animation: false }} onClick={function (_e, els) { if (els.length > 0) setSelectedActivityIndex(els[0].index); }} /></div><div className="inline-detail"><p className="inline-detail-title">Economic Drilldown</p>{activityDrilldown ? <><p className="inline-detail-main">{activityDrilldown.title}</p><p className="inline-detail-text">{activityDrilldown.description}</p></> : <p className="inline-detail-text">Click an activity category.</p>}</div></div>
+                        <div className="card short-card"><h3 className="card-title">Marital Status Profile</h3><div className="chart-box"><Bar data={{ labels: maritalLabels, datasets: [{ label: 'Males', data: maritalMaleValues, backgroundColor: '#3b82f6', borderRadius: 5, maxBarThickness: 24 }, { label: 'Females', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 5, maxBarThickness: 24 }] }} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { beginAtZero: true }, y: { grid: { display: false } } }, animation: false }} /></div></div>
                     </div>
-                </div>
-            </div>
+                )}
 
-            {/* bottom row - duration bar chart and reasons pie/bar */}
-            <div className="bottom-row">
-                {/* duration of stay bar chart */}
-                <div className="card short-card">
-                    <h3 className="card-title">Duration of Stay</h3>
-                    <div className="chart-box">
-                        <Bar
-                            data={{
-                                labels: durationLabels,
-                                datasets: [{
-                                    label: 'Persons',
-                                    data: durationTotals,
-                                    backgroundColor: '#fb923c',
-                                    maxBarThickness: 42,
-                                    borderRadius: 6,
-                                    categoryPercentage: 0.82,
-                                    barPercentage: 0.95
-                                }]
-                            }}
-                            options={{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: { legend: { display: false } },
-                                scales: { y: { beginAtZero: true } }
-                            }}
-                        />
+                {activeTab === 'drivers' && (
+                    <div className="driver-grid">
+                        <div className="card tall-card"><h3 className="card-title">Reasons of Migration</h3>{!reasonsAltView ? <div className="chart-with-detail"><BreakdownPie labels={reasonLabels} values={reasonTotals} colors={['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#64748b']} onClick={function (_e, els) { if (els.length > 0) setSelectedReasonIndex(els[0].index); }} /><div className="inline-detail"><p className="inline-detail-title">Reason Drilldown</p>{reasonDrilldown ? <><p className="inline-detail-main">{reasonDrilldown.title}</p><p className="inline-detail-text">{reasonDrilldown.description}</p><p className="inline-detail-text">{reasonDrilldown.value} ({reasonDrilldown.share})</p></> : <p className="inline-detail-text">Click a reason segment.</p>}</div></div> : <div className="alt-view-block"><p className="alt-view-title">Top Reasons</p><ul className="takeaway-list compact-list">{getTopN(reasonRows, 5).map(function (row, i) { return <li key={row.label}>#{i + 1} {row.label}: {row.value.toLocaleString()} ({formatPercent(getShare(row.value, reasonTotal))})</li>; })}</ul></div>}<div className="footer"><span>Total reason records: {reasonTotal.toLocaleString()}</span><button type="button" className="link-btn" onClick={() => setReasonsAltView(!reasonsAltView)}>{reasonsAltView ? 'Back to chart' : 'View ranked reasons'}</button></div></div>
+                        <DrilldownPanel title="Detailed Reason Insight Panel" detail={reasonDrilldown} />
+                        <div className="card short-card span-2"><h3 className="card-title">Top 10 Counterpart States</h3>{!counterpartAltView ? <div className="chart-box-tall">{top10Counterparts.length > 0 ? <Bar data={{ labels: top10Counterparts.map(function (r) { return r.name; }), datasets: [{ data: top10Counterparts.map(function (r) { return r.value; }), backgroundColor: flowType === 'inflow' ? '#3b82f6' : '#f97316', borderRadius: 6, maxBarThickness: 24 }] }} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } }, animation: false }} /> : <p className="no-data">No counterpart data available</p>}</div> : <div className="alt-view-block"><p className="alt-view-title">Corridor Concentration</p><ul className="takeaway-list compact-list"><li>Top 1 share: {formatPercent(getShare(driverMetrics.topCounterpart?.value || 0, totalFlow))}</li><li>Top 3 share: {formatPercent(driverMetrics.top3Share)}</li><li>Concentration level: {driverMetrics.concentrationLevel}</li></ul></div>}<div className="footer"><span>Driver summary: {driverMetrics.driverType}</span><button type="button" className="link-btn" onClick={() => setCounterpartAltView(!counterpartAltView)}>{counterpartAltView ? 'Back to chart' : 'View concentration insights'}</button></div></div>
                     </div>
-                    <div className="footer">
-                        <span>Total: {durationTotal.toLocaleString()}</span>
-                    </div>
-                </div>
-
-                {/* reasons for migration - flips between total pie and male/female bar */}
-                <div className="card short-card">
-                    <div className="flip-box2">
-                        <div className={'flip-inner2 ' + (showDetails ? 'flipped2' : '')}>
-                            {/* front - total reasons pie chart */}
-                            <div className="side2">
-                                <h3 className="card-title">Reasons of Migration (Total)</h3>
-                                <div className="chart-box">
-                                    <Pie
-                                        data={{
-                                            labels: reasonLabels,
-                                            datasets: [{
-                                                data: reasonTotals,
-                                                backgroundColor: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#64748b']
-                                            }]
-                                        }}
-                                        options={{
-                                            responsive: true,
-                                            maintainAspectRatio: false,
-                                            plugins: { legend: { position: 'bottom' } },
-                                            animation: false
-                                        }}
-                                    />
-                                </div>
-                                <div className="footer">
-                                    <span>Total: {reasonTotal.toLocaleString()}</span>
-                                    <button className="link-btn" onClick={() => setShowDetails(true)}>
-                                        See detailed breakdown
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* back - male vs female stacked bar chart */}
-                            <div className="side2 back-side2">
-                                <h3 className="card-title">Reasons of Migration (Male vs Female)</h3>
-                                <div className="chart-box-tall">
-                                    <Bar
-                                        data={{
-                                            labels: reasonLabels,
-                                            datasets: [{
-                                                label: 'Males',
-                                                data: maleReasonTotals,
-                                                backgroundColor: '#3b82f6',
-                                                maxBarThickness: 32,
-                                                borderRadius: 4,
-                                                categoryPercentage: 0.82,
-                                                barPercentage: 0.9
-                                            }, {
-                                                label: 'Females',
-                                                data: femaleReasonTotals,
-                                                backgroundColor: '#ec4899',
-                                                maxBarThickness: 32,
-                                                borderRadius: 4,
-                                                categoryPercentage: 0.82,
-                                                barPercentage: 0.9
-                                            }]
-                                        }}
-                                        options={{
-                                            responsive: true,
-                                            maintainAspectRatio: false,
-                                            plugins: { legend: { display: true } },
-                                            scales: {
-                                                x: { stacked: true },
-                                                y: { stacked: true, beginAtZero: true }
-                                            },
-                                            animation: false
-                                        }}
-                                    />
-                                </div>
-                                <div className="footer">
-                                    <span>Total Males: {maleReasonTotal.toLocaleString()}</span>
-                                    <span>Total Females: {femaleReasonTotal.toLocaleString()}</span>
-                                    <button className="link-btn" onClick={() => setShowDetails(false)}>
-                                        Back to total
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* economic activity (D06) */}
-            <div className="activity-row">
-                <div className="card short-card">
-                    <h3 className="card-title">Economic Activity Profile (D06)</h3>
-                    <div className="chart-box">
-                        {activityTotalPersons > 0 ? (
-                            <Bar
-                                data={{
-                                    labels: activityLabels,
-                                    datasets: [{
-                                        label: 'Other in category',
-                                        data: activityOtherValues,
-                                        backgroundColor: '#3b82f6',
-                                        borderRadius: 5,
-                                        maxBarThickness: 70,
-                                        categoryPercentage: 0.72,
-                                        barPercentage: 0.9
-                                    }, {
-                                        label: 'Seeking for work',
-                                        data: activitySeekingValues,
-                                        backgroundColor: '#f97316',
-                                        borderRadius: 5,
-                                        maxBarThickness: 70,
-                                        categoryPercentage: 0.72,
-                                        barPercentage: 0.9
-                                    }]
-                                }}
-                                options={{
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: { position: 'bottom' },
-                                        tooltip: {
-                                            callbacks: {
-                                                label: function (ctx) {
-                                                    const val = Number(ctx.parsed.y) || 0;
-                                                    return ` ${ctx.dataset.label}: ${val.toLocaleString()}`;
-                                                }
-                                            }
-                                        }
-                                    },
-                                    scales: {
-                                        x: { stacked: true, grid: { display: false } },
-                                        y: { stacked: true, beginAtZero: true }
-                                    },
-                                    animation: false
-                                }}
-                            />
-                        ) : (
-                            <p className="no-data">No economic activity data available</p>
-                        )}
-                    </div>
-                    <div className="footer">
-                        <span>Total classified: {activityTotalPersons.toLocaleString()}</span>
-                        <span>Seeking for work: {activitySeekingTotal.toLocaleString()} ({activitySeekingShare}%)</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* third row - pie cards side by side */}
-            <div className="pie-row">
-                <div className="card short-card pie-card">
-                    <h3 className="card-title">Age Profile of Migrants (D12)</h3>
-                    {ageGrandTotal > 0 ? (
-                        <BreakdownPie
-                            labels={ageSegmentLabels}
-                            values={ageSegmentTotals}
-                            colors={['#06b6d4', '#3b82f6', '#8b5cf6', '#f97316', '#64748b']}
-                        />
-                    ) : (
-                        <p className="no-data">No age data available</p>
-                    )}
-                    <div className="footer">
-                        <span>Total: {ageGrandTotal.toLocaleString()}</span>
-                    </div>
-                </div>
-
-                <div className="card short-card pie-card">
-                    <h3 className="card-title">Literacy Split (D04)</h3>
-                    {literacyTotal > 0 ? (
-                        <BreakdownPie
-                            labels={['Literate', 'Illiterate']}
-                            values={[literatePersons, illiteratePersons]}
-                            colors={['#22c55e', '#ef4444']}
-                        />
-                    ) : (
-                        <p className="no-data">No education data available</p>
-                    )}
-                    <div className="footer">
-                        <span>Literate: {literatePercent}%</span>
-                        <span>Illiterate: {illiteratePercent}%</span>
-                        <span>M:F (Literate) = {literateFemales > 0 ? (literateMales / literateFemales).toFixed(2) : 'N/A'}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* fourth row - bar insights */}
-            <div className="insight-row">
-                <div className="card short-card">
-                    <h3 className="card-title">Top 10 Counterpart States</h3>
-                    <div className="age-sort-row">
-                        <div className="sort-btns">
-                            <button
-                                onClick={() => setAgeRankMetric('youth')}
-                                className={'sort-btn ' + (ageRankMetric === 'youth' ? 'sort-active' : '')}
-                            >
-                                Youth
-                            </button>
-                            <button
-                                onClick={() => setAgeRankMetric('elderly')}
-                                className={'sort-btn ' + (ageRankMetric === 'elderly' ? 'sort-active' : '')}
-                            >
-                                Elderly
-                            </button>
-                        </div>
-                    </div>
-                    <div className="chart-box-tall">
-                        {topAgeCounterparts.length > 0 ? (
-                            <Bar
-                                data={{
-                                    labels: topAgeCounterparts.map((item) => item.state),
-                                    datasets: [{
-                                        label: topMetricLabel,
-                                        data: topAgeCounterparts.map((item) => item[ageRankMetric]),
-                                        backgroundColor: topMetricColor,
-                                        borderRadius: 6,
-                                        maxBarThickness: 28
-                                    }]
-                                }}
-                                options={{
-                                    indexAxis: 'y',
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: { display: false },
-                                        tooltip: {
-                                            callbacks: {
-                                                label: function (ctx) {
-                                                    const row = topAgeCounterparts[ctx.dataIndex];
-                                                    const primary = Number(row?.[ageRankMetric]) || 0;
-                                                    const secondaryKey = ageRankMetric === 'youth' ? 'elderly' : 'youth';
-                                                    const secondaryLabel = ageRankMetric === 'youth' ? 'Elderly (60+)' : 'Youth (15-29)';
-                                                    const secondary = Number(row?.[secondaryKey]) || 0;
-                                                    return ` ${topMetricLabel}: ${primary.toLocaleString()} | ${secondaryLabel}: ${secondary.toLocaleString()}`;
-                                                }
-                                            }
-                                        }
-                                    },
-                                    scales: {
-                                        x: { beginAtZero: true },
-                                        y: {
-                                            ticks: {
-                                                font: { size: 10 }
-                                            }
-                                        }
-                                    },
-                                    animation: false
-                                }}
-                            />
-                        ) : (
-                            <p className="no-data">No age comparison data available</p>
-                        )}
-                    </div>
-                    <div className="footer">
-                        <span>Ranked by: {topMetricLabel}</span>
-                        <span>Top-10 total: {topMetricTotal.toLocaleString()}</span>
-                    </div>
-                </div>
-
-                <div className="card short-card">
-                    <h3 className="card-title">Within Literate: Education Levels (Male vs Female)</h3>
-                    <div className="chart-box-tall">
-                        {literatePersons > 0 ? (
-                            <Bar
-                                data={{
-                                    labels: educationChartLabels,
-                                    datasets: [{
-                                        label: 'Males',
-                                        data: educationMaleValues,
-                                        backgroundColor: '#3b82f6',
-                                        maxBarThickness: 36,
-                                        borderRadius: 5,
-                                        categoryPercentage: 0.8,
-                                        barPercentage: 0.9
-                                    }, {
-                                        label: 'Females',
-                                        data: educationFemaleValues,
-                                        backgroundColor: '#ec4899',
-                                        maxBarThickness: 36,
-                                        borderRadius: 5,
-                                        categoryPercentage: 0.8,
-                                        barPercentage: 0.9
-                                    }]
-                                }}
-                                options={{
-                                    indexAxis: 'y',
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: { display: true },
-                                        tooltip: {
-                                            callbacks: {
-                                                afterLabel: function (ctx) {
-                                                    const val = Number(ctx.parsed.x) || 0;
-                                                    const pct = literatePersons > 0 ? ((val / literatePersons) * 100).toFixed(1) : '0.0';
-                                                    return `Share of literate: ${pct}%`;
-                                                }
-                                            }
-                                        }
-                                    },
-                                    scales: {
-                                        x: { beginAtZero: true }
-                                    },
-                                    animation: false
-                                }}
-                            />
-                        ) : (
-                            <p className="no-data">No literate breakdown data available</p>
-                        )}
-                    </div>
-                    <div className="footer">
-                        <span>Literate total: {literatePersons.toLocaleString()}</span>
-                        <span>Males: {literateMales.toLocaleString()} | Females: {literateFemales.toLocaleString()}</span>
-                        <span>Classified share: {literatePersons > 0 ? (((literatePersons - literateUnclassified) / literatePersons) * 100).toFixed(1) : '0.0'}%</span>
-                    </div>
-                </div>
-            </div>
+                )}
+            </section>
         </div>
     );
 }
