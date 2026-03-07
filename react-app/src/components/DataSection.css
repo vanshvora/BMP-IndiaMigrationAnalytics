@@ -147,6 +147,14 @@
   align-items: stretch;
 }
 
+.activity-row {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
 @media (min-width: 900px) {
   .top-row {
     grid-template-columns: 2fr 1fr 1fr;

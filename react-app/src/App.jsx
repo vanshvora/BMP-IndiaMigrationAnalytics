@@ -60,6 +60,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mapAction, setMapAction] = useState(null);
+  const [topFlowLimit, setTopFlowLimit] = useState('10');
+  const [highlightTopCorridors, setHighlightTopCorridors] = useState(false);
 
   // load the csv file when page loads
   useEffect(() => {
@@ -93,6 +96,14 @@ function App() {
     setTimeout(() => {
       document.getElementById('data-section')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedState(null);
+  };
+
+  const handleMapAction = (type) => {
+    setMapAction({ type, timestamp: Date.now() });
   };
 
   // loading screen
@@ -155,6 +166,12 @@ function App() {
                   threshold={threshold}
                   setThreshold={setThreshold}
                   onCollapse={() => setSidebarOpen(false)}
+                  onClearSelection={handleClearSelection}
+                  onMapAction={handleMapAction}
+                  topFlowLimit={topFlowLimit}
+                  setTopFlowLimit={setTopFlowLimit}
+                  highlightTopCorridors={highlightTopCorridors}
+                  setHighlightTopCorridors={setHighlightTopCorridors}
                 />
               </div>
             ) : (
@@ -175,7 +192,9 @@ function App() {
               selectedState={selectedState}
               onStateClick={handleStateClick}
               threshold={threshold}
-              onClearSelection={() => setSelectedState(null)}
+              mapAction={mapAction}
+              topFlowLimit={topFlowLimit}
+              highlightTopCorridors={highlightTopCorridors}
             />
           </main>
         </div>

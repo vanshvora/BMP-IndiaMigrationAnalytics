@@ -150,6 +150,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const [d03Data, setD03Data] = useState([]);
     const [d12Data, setD12Data] = useState([]);
     const [d04Data, setD04Data] = useState([]);
+    const [d06Data, setD06Data] = useState([]);
 
     // load D02 (duration data) and D03 (reasons data) csv files
     useEffect(() => {
@@ -252,6 +253,30 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             .catch(function (err) {
                 console.error('D04 fetch error:', err);
                 setD04Data([]);
+            });
+
+        // load economic activity data
+        fetch('/D06_cleaned.csv')
+            .then(function (r) { return r.text(); })
+            .then(function (txt) {
+                const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
+                const rows = [];
+                for (let i = 0; i < result.data.length; i++) {
+                    const row = result.data[i];
+                    const area = normalizeName(row.AreaName);
+                    if (!INDIAN_STATES_NORM.includes(area)) continue;
+
+                    rows.push({
+                        ...row,
+                        AreaName: area
+                    });
+                }
+                console.log('D06 economic data loaded:', rows.length);
+                setD06Data(rows);
+            })
+            .catch(function (err) {
+                console.error('D06 fetch error:', err);
+                setD06Data([]);
             });
     }, []);
 
@@ -486,6 +511,34 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const educationChartLabels = ['Below Matric', 'Matric to < Graduate', 'Technical Diploma', 'Graduate+', 'Technical Degree', 'Literate (Unclassified)'];
     const educationMaleValues = [belowMatricMales, matricToGradMales, techDiplomaMales, graduateMales, techDegreeMales, literateUnclassifiedMales];
     const educationFemaleValues = [belowMatricFemales, matricToGradFemales, techDiplomaFemales, graduateFemales, techDegreeFemales, literateUnclassifiedFemales];
+
+    // ---- Economic Activity Profile (D06) ----
+    let selectedActivityRow = null;
+    for (let i = 0; i < d06Data.length; i++) {
+        if (d06Data[i].AreaName === selectedState) {
+            selectedActivityRow = d06Data[i];
+            break;
+        }
+    }
+
+    const mainWorkersPersons = Number(selectedActivityRow?.MainWorkers_Persons) || 0;
+    const marginalWorkersPersons = Number(selectedActivityRow?.MarginalWorkers_Persons) || 0;
+    const marginalSeekingPersons = Number(selectedActivityRow?.MarginalSeeking_Persons) || 0;
+    const nonWorkersPersons = Number(selectedActivityRow?.NonWorkers_Persons) || 0;
+    const nonWorkersSeekingPersons = Number(selectedActivityRow?.NonWorkersSeeking_Persons) || 0;
+
+    const marginalOtherPersons = Math.max(0, marginalWorkersPersons - marginalSeekingPersons);
+    const nonWorkersOtherPersons = Math.max(0, nonWorkersPersons - nonWorkersSeekingPersons);
+
+    const activityLabels = ['Main Workers', 'Marginal Workers', 'Non-workers'];
+    const activityOtherValues = [mainWorkersPersons, marginalOtherPersons, nonWorkersOtherPersons];
+    const activitySeekingValues = [0, marginalSeekingPersons, nonWorkersSeekingPersons];
+
+    const activityTotalPersons = mainWorkersPersons + marginalWorkersPersons + nonWorkersPersons;
+    const activitySeekingTotal = marginalSeekingPersons + nonWorkersSeekingPersons;
+    const activitySeekingShare = activityTotalPersons > 0
+        ? ((activitySeekingTotal / activityTotalPersons) * 100).toFixed(1)
+        : '0.0';
 
     // if no state is selected, show a message
     if (!selectedState) {
@@ -775,6 +828,65 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* economic activity (D06) */}
+            <div className="activity-row">
+                <div className="card short-card">
+                    <h3 className="card-title">Economic Activity Profile (D06)</h3>
+                    <div className="chart-box">
+                        {activityTotalPersons > 0 ? (
+                            <Bar
+                                data={{
+                                    labels: activityLabels,
+                                    datasets: [{
+                                        label: 'Other in category',
+                                        data: activityOtherValues,
+                                        backgroundColor: '#3b82f6',
+                                        borderRadius: 5,
+                                        maxBarThickness: 70,
+                                        categoryPercentage: 0.72,
+                                        barPercentage: 0.9
+                                    }, {
+                                        label: 'Seeking for work',
+                                        data: activitySeekingValues,
+                                        backgroundColor: '#f97316',
+                                        borderRadius: 5,
+                                        maxBarThickness: 70,
+                                        categoryPercentage: 0.72,
+                                        barPercentage: 0.9
+                                    }]
+                                }}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { position: 'bottom' },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: function (ctx) {
+                                                    const val = Number(ctx.parsed.y) || 0;
+                                                    return ` ${ctx.dataset.label}: ${val.toLocaleString()}`;
+                                                }
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        x: { stacked: true, grid: { display: false } },
+                                        y: { stacked: true, beginAtZero: true }
+                                    },
+                                    animation: false
+                                }}
+                            />
+                        ) : (
+                            <p className="no-data">No economic activity data available</p>
+                        )}
+                    </div>
+                    <div className="footer">
+                        <span>Total classified: {activityTotalPersons.toLocaleString()}</span>
+                        <span>Seeking for work: {activitySeekingTotal.toLocaleString()} ({activitySeekingShare}%)</span>
                     </div>
                 </div>
             </div>

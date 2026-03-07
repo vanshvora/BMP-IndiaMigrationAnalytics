@@ -85,30 +85,32 @@ const INDIA_GEOJSON_URL = "https://raw.githubusercontent.com/geohacker/india/mas
     });
 })();
 
-// buttons to clear selection and reset map view
-function MapControls({ onClear, hasSelection }) {
+function MapActionController({ mapAction, selectedState }) {
     const map = useMap();
 
-    function handleReset() {
-        map.setView([22.5937, 82.9629], 5);
-    }
+    useEffect(() => {
+        if (!mapAction || !mapAction.type) return;
 
-    return (
-        <div className="btns">
-            {hasSelection && (
-                <button onClick={onClear} className="btn">
-                    <span className="x-icon">x</span> Clear Selection
-                </button>
-            )}
-            <button onClick={handleReset} className="btn">
-                <span>R</span> Reset Map View
-            </button>
-        </div>
-    );
+        if (mapAction.type === 'reset-view') {
+            map.flyTo([22.5937, 82.9629], 5, { duration: 0.7 });
+            return;
+        }
+
+        if (mapAction.type === 'focus-selected') {
+            if (!selectedState) return;
+            const coords = getCoords(selectedState);
+            if (!coords) return;
+            map.flyTo(coords, 6, { duration: 0.7 });
+            return;
+        }
+
+    }, [mapAction, map, selectedState]);
+
+    return null;
 }
 
 // draws the curved flow lines between states on the map
-function FlowLines({ flows, flowType, selectedState, threshold }) {
+function FlowLines({ flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors }) {
     const map = useMap();
     const linesLayerRef = useRef(L.layerGroup());
 
@@ -119,7 +121,7 @@ function FlowLines({ flows, flowType, selectedState, threshold }) {
         if (!selectedState || flows.length === 0) return;
 
         // filter flows based on the selected state and threshold
-        const filtered = [];
+        const eligible = [];
         for (let i = 0; i < flows.length; i++) {
             const f = flows[i];
             if (f.count < threshold) continue;
@@ -131,23 +133,40 @@ function FlowLines({ flows, flowType, selectedState, threshold }) {
             // make sure both origin and destination have coordinates
             if (!getCoords(f.origin) || !getCoords(f.destination)) continue;
 
-            filtered.push(f);
+            eligible.push(f);
         }
+
+        // rank by corridor count and limit to top-N if needed
+        eligible.sort(function (a, b) { return b.count - a.count; });
+        const maxCount = topFlowLimit === 'all' ? eligible.length : Number(topFlowLimit);
+        const filtered = eligible.slice(0, Math.max(0, maxCount));
 
         // draw a curved line for each flow
         for (let i = 0; i < filtered.length; i++) {
             const f = filtered[i];
             const start = getCoords(f.origin);
             const end = getCoords(f.destination);
-            const color = flowType === 'inflow' ? '#3b82f6' : '#f97316';
+            const color = highlightTopCorridors
+                ? (flowType === 'inflow' ? '#1d4ed8' : '#ea580c')
+                : (flowType === 'inflow' ? '#3b82f6' : '#f97316');
             const { control } = getBezierPoints(start, end);
 
             // line thickness based on how many migrants (log scale)
-            const lineWeight = Math.max(1, Math.log10(f.count) * 1.5);
+            const baseWeight = Math.max(1, Math.log10(f.count) * 1.5);
+            const lineWeight = highlightTopCorridors ? Math.max(2.2, baseWeight * 1.45) : baseWeight;
+            const lineOpacity = highlightTopCorridors ? 0.95 : 0.62;
+
+            if (highlightTopCorridors) {
+                const halo = L.curve(
+                    ['M', start, 'Q', control, end],
+                    { color: '#0f172a', weight: lineWeight + 2.2, opacity: 0.26, fill: false }
+                );
+                linesLayer.addLayer(halo);
+            }
 
             const curve = L.curve(
                 ['M', start, 'Q', control, end],
-                { color: color, weight: lineWeight, opacity: 0.6, fill: false }
+                { color: color, weight: lineWeight, opacity: lineOpacity, fill: false }
             );
             curve.bindTooltip(`${f.origin} -> ${f.destination}: ${f.count.toLocaleString()}`);
             linesLayer.addLayer(curve);
@@ -158,7 +177,7 @@ function FlowLines({ flows, flowType, selectedState, threshold }) {
         return () => {
             linesLayer.clearLayers();
         };
-    }, [flows, flowType, selectedState, threshold, map]);
+    }, [flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors, map]);
 
     return null;
 }
@@ -217,7 +236,16 @@ function IndiaGeoJSON({ onStateClick, selectedState, flowType }) {
 }
 
 // main map component
-export default function MapView({ flows, flowType, selectedState, onStateClick, threshold, onClearSelection }) {
+export default function MapView({
+    flows,
+    flowType,
+    selectedState,
+    onStateClick,
+    threshold,
+    mapAction,
+    topFlowLimit,
+    highlightTopCorridors
+}) {
     return (
         <MapContainer
             center={[22.5937, 82.9629]}
@@ -235,13 +263,15 @@ export default function MapView({ flows, flowType, selectedState, onStateClick, 
                 noWrap={true}
             />
 
-            <MapControls onClear={onClearSelection} hasSelection={!!selectedState} />
+            <MapActionController mapAction={mapAction} selectedState={selectedState} />
             <IndiaGeoJSON onStateClick={onStateClick} selectedState={selectedState} flowType={flowType} />
             <FlowLines
                 flows={flows}
                 flowType={flowType}
                 selectedState={selectedState}
                 threshold={threshold}
+                topFlowLimit={topFlowLimit}
+                highlightTopCorridors={highlightTopCorridors}
             />
         </MapContainer>
     );
