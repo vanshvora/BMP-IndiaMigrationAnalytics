@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { INDIAN_STATES_NORM } from '../utils/coordinates';
 import './Sidebar.css';
 
 // sidebar component with controls for the map
@@ -15,8 +16,17 @@ export default function Sidebar({
     topFlowLimit,
     setTopFlowLimit,
     highlightTopCorridors,
-    setHighlightTopCorridors
+    setHighlightTopCorridors,
+    compareMode,
+    onToggleCompareMode,
+    stateA,
+    stateB,
+    onCompareStateSelect
 }) {
+    const stateOptions = useMemo(function () {
+        return [...INDIAN_STATES_NORM].sort(function (a, b) { return a.localeCompare(b); });
+    }, []);
+
     const relevantFlows = useMemo(function () {
         if (!selectedState) return [];
 
@@ -121,10 +131,45 @@ export default function Sidebar({
                 </div>
 
                 <p className="helper-text">
-                    {selectedState
-                        ? 'Click another state on the map to update'
-                        : 'Select a state to explore migration flows'}
+                    {compareMode
+                        ? 'Select two states from map clicks or dropdowns'
+                        : (selectedState
+                            ? 'Click another state on the map to update'
+                            : 'Select a state to explore migration flows')}
                 </p>
+
+                {compareMode && (
+                    <div className="compare-picker-grid">
+                        <div className="compare-picker-block">
+                            <label className="compare-picker-label" htmlFor="state-a-picker">State A</label>
+                            <select
+                                id="state-a-picker"
+                                className="compare-picker"
+                                value={stateA || ''}
+                                onChange={(e) => onCompareStateSelect?.(e.target.value || null, 'A')}
+                            >
+                                <option value="">Select State A</option>
+                                {stateOptions.map(function (stateName) {
+                                    return <option key={`state-a-${stateName}`} value={stateName}>{stateName}</option>;
+                                })}
+                            </select>
+                        </div>
+                        <div className="compare-picker-block">
+                            <label className="compare-picker-label" htmlFor="state-b-picker">State B</label>
+                            <select
+                                id="state-b-picker"
+                                className="compare-picker"
+                                value={stateB || ''}
+                                onChange={(e) => onCompareStateSelect?.(e.target.value || null, 'B')}
+                            >
+                                <option value="">Select State B</option>
+                                {stateOptions.map(function (stateName) {
+                                    return <option key={`state-b-${stateName}`} value={stateName}>{stateName}</option>;
+                                })}
+                            </select>
+                        </div>
+                    </div>
+                )}
             </section>
 
             <section className="panel-card">
@@ -178,6 +223,13 @@ export default function Sidebar({
             <section className="panel-card">
                 <p className="section-label">Map Actions</p>
                 <div className="action-grid">
+                    <button
+                        type="button"
+                        className={`utility-btn span-two ${compareMode ? 'is-compare-active' : ''}`}
+                        onClick={onToggleCompareMode}
+                    >
+                        {compareMode ? 'Exit Compare States' : 'Compare States'}
+                    </button>
                     <button type="button" className="utility-btn" onClick={handleResetMapView}>
                         Reset Map View
                     </button>
@@ -185,7 +237,7 @@ export default function Sidebar({
                         type="button"
                         className="utility-btn"
                         onClick={onClearSelection}
-                        disabled={!selectedState}
+                        disabled={compareMode ? (!stateA && !stateB) : !selectedState}
                     >
                         Clear Selection
                     </button>

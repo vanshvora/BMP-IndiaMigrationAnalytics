@@ -1,0 +1,142 @@
+.comparison-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comparison-header {
+  background: #ffffff;
+  border: 1px solid #e7e5e4;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.comparison-title {
+  margin: 0;
+  color: #1c1917;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.comparison-subtitle {
+  margin: 6px 0 0;
+  color: #78716c;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.comparison-pair {
+  margin: 8px 0 0;
+  color: #1c1917;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.comparison-mode {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.comparison-insight-box {
+  background: #f8fbff;
+  border: 1px solid #d6e4fa;
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.comparison-insight-title {
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.comparison-insight-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.comparison-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comparison-section-title {
+  margin: 0;
+  color: #6b7280;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.comparison-grid-2 {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 980px) {
+  .comparison-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.comparison-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 720px) {
+  .comparison-kpi-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.comparison-kpi-tile {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.comparison-kpi-label {
+  margin: 0;
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.comparison-kpi-value {
+  margin: 8px 0 0;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-a-tile .comparison-kpi-value {
+  color: #2563eb;
+}
+
+.state-b-tile .comparison-kpi-value {
+  color: #f97316;
+}

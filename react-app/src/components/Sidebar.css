@@ -117,6 +117,35 @@
   color: #73839a;
 }
 
+.compare-picker-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.compare-picker-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compare-picker-label {
+  color: #42526a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.compare-picker {
+  min-height: 34px;
+  border: 1px solid #cfdcf2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  padding: 0 10px;
+}
+
 .filter-block {
   margin-bottom: 12px;
 }
@@ -186,6 +215,10 @@
   gap: 8px;
 }
 
+.span-two {
+  grid-column: span 2;
+}
+
 .utility-btn {
   min-height: 34px;
   padding: 0 10px;
@@ -216,6 +249,12 @@
   border-color: #8bb4e6;
   color: #1f4f90;
   background: #e1eeff;
+}
+
+.utility-btn.is-compare-active {
+  border-color: #f97316;
+  color: #9a3412;
+  background: #ffedd5;
 }
 
 .snapshot-card {

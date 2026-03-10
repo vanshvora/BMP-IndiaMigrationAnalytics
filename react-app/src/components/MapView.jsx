@@ -5,6 +5,9 @@ import 'leaflet/dist/leaflet.css';
 import { COORDINATES, INTERNATIONAL_COORDINATES, getBezierPoints, normalizeName } from '../utils/coordinates';
 import './MapView.css';
 
+const STATE_A_COLORS = { base: '#2563eb', highlight: '#1d4ed8' };
+const STATE_B_COLORS = { base: '#f97316', highlight: '#ea580c' };
+
 // get coordinates for a state - check domestic first, then international
 function getCoords(name) {
     if (COORDINATES[name]) return COORDINATES[name];
@@ -110,7 +113,7 @@ function MapActionController({ mapAction, selectedState }) {
 }
 
 // draws the curved flow lines between states on the map
-function FlowLines({ flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors }) {
+function FlowLines({ flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors, compareMode, stateA, stateB }) {
     const map = useMap();
     const linesLayerRef = useRef(L.layerGroup());
 
@@ -118,58 +121,64 @@ function FlowLines({ flows, flowType, selectedState, threshold, topFlowLimit, hi
         const linesLayer = linesLayerRef.current;
         linesLayer.clearLayers();
 
-        if (!selectedState || flows.length === 0) return;
+        if (flows.length === 0) return;
 
-        // filter flows based on the selected state and threshold
-        const eligible = [];
-        for (let i = 0; i < flows.length; i++) {
-            const f = flows[i];
-            if (f.count < threshold) continue;
+        function drawFlowSet(targetState, palette, groupLabel, dashArray) {
+            if (!targetState) return;
 
-            // check if this flow is for our selected state
-            if (flowType === 'inflow' && f.destination !== selectedState) continue;
-            if (flowType === 'outflow' && f.origin !== selectedState) continue;
+            const eligible = [];
+            for (let i = 0; i < flows.length; i++) {
+                const f = flows[i];
+                if (f.count < threshold) continue;
 
-            // make sure both origin and destination have coordinates
-            if (!getCoords(f.origin) || !getCoords(f.destination)) continue;
+                if (flowType === 'inflow' && f.destination !== targetState) continue;
+                if (flowType === 'outflow' && f.origin !== targetState) continue;
+                if (!getCoords(f.origin) || !getCoords(f.destination)) continue;
 
-            eligible.push(f);
-        }
-
-        // rank by corridor count and limit to top-N if needed
-        eligible.sort(function (a, b) { return b.count - a.count; });
-        const maxCount = topFlowLimit === 'all' ? eligible.length : Number(topFlowLimit);
-        const filtered = eligible.slice(0, Math.max(0, maxCount));
-
-        // draw a curved line for each flow
-        for (let i = 0; i < filtered.length; i++) {
-            const f = filtered[i];
-            const start = getCoords(f.origin);
-            const end = getCoords(f.destination);
-            const color = highlightTopCorridors
-                ? (flowType === 'inflow' ? '#1d4ed8' : '#ea580c')
-                : (flowType === 'inflow' ? '#3b82f6' : '#f97316');
-            const { control } = getBezierPoints(start, end);
-
-            // line thickness based on how many migrants (log scale)
-            const baseWeight = Math.max(1, Math.log10(f.count) * 1.5);
-            const lineWeight = highlightTopCorridors ? Math.max(2.2, baseWeight * 1.45) : baseWeight;
-            const lineOpacity = highlightTopCorridors ? 0.95 : 0.62;
-
-            if (highlightTopCorridors) {
-                const halo = L.curve(
-                    ['M', start, 'Q', control, end],
-                    { color: '#0f172a', weight: lineWeight + 2.2, opacity: 0.26, fill: false }
-                );
-                linesLayer.addLayer(halo);
+                eligible.push(f);
             }
 
-            const curve = L.curve(
-                ['M', start, 'Q', control, end],
-                { color: color, weight: lineWeight, opacity: lineOpacity, fill: false }
-            );
-            curve.bindTooltip(`${f.origin} -> ${f.destination}: ${f.count.toLocaleString()}`);
-            linesLayer.addLayer(curve);
+            eligible.sort(function (a, b) { return b.count - a.count; });
+            const maxCount = topFlowLimit === 'all' ? eligible.length : Number(topFlowLimit);
+            const safeMax = Number.isFinite(maxCount) ? maxCount : eligible.length;
+            const filtered = eligible.slice(0, Math.max(0, safeMax));
+
+            for (let i = 0; i < filtered.length; i++) {
+                const f = filtered[i];
+                const start = getCoords(f.origin);
+                const end = getCoords(f.destination);
+                const color = highlightTopCorridors ? palette.highlight : palette.base;
+                const { control } = getBezierPoints(start, end);
+
+                const baseWeight = Math.max(1, Math.log10(f.count) * 1.5);
+                const lineWeight = highlightTopCorridors ? Math.max(2.2, baseWeight * 1.45) : baseWeight;
+                const lineOpacity = highlightTopCorridors ? 0.92 : 0.62;
+
+                if (highlightTopCorridors) {
+                    const halo = L.curve(
+                        ['M', start, 'Q', control, end],
+                        { color: '#0f172a', weight: lineWeight + 2.2, opacity: 0.24, fill: false }
+                    );
+                    linesLayer.addLayer(halo);
+                }
+
+                const curve = L.curve(
+                    ['M', start, 'Q', control, end],
+                    { color: color, weight: lineWeight, opacity: lineOpacity, fill: false, dashArray: dashArray || null }
+                );
+                curve.bindTooltip(`${groupLabel} | ${f.origin} -> ${f.destination}: ${f.count.toLocaleString()}`);
+                linesLayer.addLayer(curve);
+            }
+        }
+
+        if (compareMode) {
+            if (!stateA && !stateB) return;
+            drawFlowSet(stateA, STATE_A_COLORS, 'State A', null);
+            drawFlowSet(stateB, STATE_B_COLORS, 'State B', '6 4');
+        } else {
+            if (!selectedState) return;
+            const defaultPalette = flowType === 'inflow' ? STATE_A_COLORS : STATE_B_COLORS;
+            drawFlowSet(selectedState, defaultPalette, 'Selected', null);
         }
 
         linesLayer.addTo(map);
@@ -177,13 +186,13 @@ function FlowLines({ flows, flowType, selectedState, threshold, topFlowLimit, hi
         return () => {
             linesLayer.clearLayers();
         };
-    }, [flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors, map]);
+    }, [flows, flowType, selectedState, threshold, topFlowLimit, highlightTopCorridors, map, compareMode, stateA, stateB]);
 
     return null;
 }
 
 // loads and renders the india geojson map with state boundaries
-function IndiaGeoJSON({ onStateClick, selectedState, flowType }) {
+function IndiaGeoJSON({ onStateClick, selectedState, flowType, compareMode, stateA, stateB }) {
     const [geoData, setGeoData] = useState(null);
 
     // load geojson data from github
@@ -199,11 +208,21 @@ function IndiaGeoJSON({ onStateClick, selectedState, flowType }) {
     // style for each state on the map
     function getStateStyle(feature) {
         const stateName = normalizeName(feature.properties.NAME_1);
-        const isSelected = stateName === selectedState;
+        const isStateA = compareMode && stateName === stateA;
+        const isStateB = compareMode && stateName === stateB;
+        const isSelected = compareMode ? (isStateA || isStateB) : stateName === selectedState;
 
-        // different colors for inflow vs outflow
-        const borderColor = flowType === 'inflow' ? '#3b82f6' : 'rgba(249, 115, 22, 0.6)';
-        const fillColor = flowType === 'inflow' ? '#bfdbfe' : 'rgba(249, 115, 22, 0.22)';
+        const borderColor = isStateA
+            ? STATE_A_COLORS.base
+            : isStateB
+                ? STATE_B_COLORS.base
+                : (flowType === 'inflow' ? '#3b82f6' : 'rgba(249, 115, 22, 0.6)');
+
+        const fillColor = isStateA
+            ? 'rgba(37, 99, 235, 0.24)'
+            : isStateB
+                ? 'rgba(249, 115, 22, 0.24)'
+                : (flowType === 'inflow' ? '#bfdbfe' : 'rgba(249, 115, 22, 0.22)');
 
         return {
             color: isSelected ? borderColor : '#6b7280',
@@ -216,23 +235,28 @@ function IndiaGeoJSON({ onStateClick, selectedState, flowType }) {
     // add tooltip and click handler for each state
     function onEachFeature(feature, layer) {
         const stateName = normalizeName(feature.properties.NAME_1);
+        const isPickedState = function (name) {
+            if (compareMode) return name === stateA || name === stateB;
+            return name === selectedState;
+        };
+
         layer.bindTooltip(stateName, { sticky: true });
         layer.on({
             click: function () { onStateClick(stateName); },
             mouseover: function (e) {
-                if (normalizeName(feature.properties.NAME_1) !== selectedState) {
+                if (!isPickedState(normalizeName(feature.properties.NAME_1))) {
                     e.target.setStyle({ fillOpacity: 0.3, weight: 2 });
                 }
             },
             mouseout: function (e) {
-                if (normalizeName(feature.properties.NAME_1) !== selectedState) {
+                if (!isPickedState(normalizeName(feature.properties.NAME_1))) {
                     e.target.setStyle({ fillOpacity: 0.1, weight: 1 });
                 }
             }
         });
     }
 
-    return <GeoJSON data={geoData} style={getStateStyle} onEachFeature={onEachFeature} key={`${selectedState}-${flowType}`} />;
+    return <GeoJSON data={geoData} style={getStateStyle} onEachFeature={onEachFeature} key={`${selectedState}-${stateA}-${stateB}-${compareMode ? 'compare' : 'single'}-${flowType}`} />;
 }
 
 // main map component
@@ -244,7 +268,10 @@ export default function MapView({
     threshold,
     mapAction,
     topFlowLimit,
-    highlightTopCorridors
+    highlightTopCorridors,
+    compareMode,
+    stateA,
+    stateB
 }) {
     return (
         <MapContainer
@@ -264,7 +291,14 @@ export default function MapView({
             />
 
             <MapActionController mapAction={mapAction} selectedState={selectedState} />
-            <IndiaGeoJSON onStateClick={onStateClick} selectedState={selectedState} flowType={flowType} />
+            <IndiaGeoJSON
+                onStateClick={onStateClick}
+                selectedState={selectedState}
+                flowType={flowType}
+                compareMode={compareMode}
+                stateA={stateA}
+                stateB={stateB}
+            />
             <FlowLines
                 flows={flows}
                 flowType={flowType}
@@ -272,6 +306,9 @@ export default function MapView({
                 threshold={threshold}
                 topFlowLimit={topFlowLimit}
                 highlightTopCorridors={highlightTopCorridors}
+                compareMode={compareMode}
+                stateA={stateA}
+                stateB={stateB}
             />
         </MapContainer>
     );
