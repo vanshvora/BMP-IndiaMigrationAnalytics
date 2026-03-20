@@ -3,17 +3,23 @@ import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import Papa from 'papaparse';
 import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
+import { chartValueLabelPlugin } from '../utils/chartLabels';
+import { loadCsv } from '../utils/loadCsv';
 import { formatPercent, getShare, getTopN } from './dashboardInsights';
-import { loadCsv } from './dashboardWidgets';
 import ComparisonHeader from './ComparisonHeader';
-import ComparisonInsights from './ComparisonInsights';
 import './DataSection.css';
 import './ComparisonDashboard.css';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, chartValueLabelPlugin);
+ChartJS.defaults.datasets.bar.categoryPercentage = 1.0;
+ChartJS.defaults.datasets.bar.barPercentage = 1.0;
 
-const STATE_A_COLOR = '#2563eb';
-const STATE_B_COLOR = '#f97316';
+const COUNTERPART_COLORS = ['#2563eb', '#f97316'];
+const AGE_COLORS = ['#0f766e', '#7c3aed'];
+const EDUCATION_COLORS = ['#16a34a', '#b45309'];
+const ACTIVITY_COLORS = ['#0891b2', '#f59e0b'];
+const MARITAL_COLORS = ['#7c3aed', '#d97706'];
+const REASON_COLORS = ['#0f766e', '#d97706'];
 
 const REASON_LABELS = ['Work', 'Business', 'Education', 'Marriage', 'Post-birth', 'With household', 'Other'];
 const REASON_KEYS = ['Persons_Work', 'Persons_Business', 'Persons_Education', 'Persons_Marriage', 'Persons_MoveAfterBirth', 'Persons_MoveWithHH', 'Persons_Other'];
@@ -34,22 +40,14 @@ const MARITAL_LABELS = ['Never Married', 'Currently Married', 'Widowed', 'Separa
 const MARITAL_KEYS = ['NeverMarried_Persons', 'CurrMarried_Persons', 'Widowed_Persons', 'Separated_Persons', 'Divorced_Persons'];
 
 const COUNTERPART_LIMIT_VOLUME = 6;
-const COUNTERPART_LIMIT_DRIVERS = 8;
-
-const groupedBarOptions = {
+const stackedBarOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { position: 'bottom' } },
-    scales: { x: { grid: { display: false } }, y: { beginAtZero: true } },
-    animation: false
-};
-
-const horizontalBarOptions = {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom' } },
-    scales: { x: { beginAtZero: true } },
+    scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true }
+    },
     animation: false
 };
 
@@ -77,31 +75,6 @@ function toCounterpartRows(flows, flowType) {
     }).sort(function (a, b) { return b.value - a.value; });
 }
 
-function buildTopComparison(rowsA, rowsB, limit) {
-    const topA = getTopN(rowsA, limit);
-    const topB = getTopN(rowsB, limit);
-    const map = {};
-
-    for (let i = 0; i < topA.length; i++) {
-        map[topA[i].name] = { a: topA[i].value, b: 0 };
-    }
-    for (let i = 0; i < topB.length; i++) {
-        const row = map[topB[i].name] || { a: 0, b: 0 };
-        row.b = topB[i].value;
-        map[topB[i].name] = row;
-    }
-
-    const merged = Object.entries(map).map(function (entry) {
-        return { label: entry[0], a: entry[1].a, b: entry[1].b, peak: Math.max(entry[1].a, entry[1].b) };
-    }).sort(function (x, y) { return y.peak - x.peak; }).slice(0, limit);
-
-    return {
-        labels: merged.map(function (row) { return row.label; }),
-        valuesA: merged.map(function (row) { return row.a; }),
-        valuesB: merged.map(function (row) { return row.b; })
-    };
-}
-
 function getComparisonSentence(metricLabel, stateA, valueA, stateB, valueB, formatter, tieTolerance) {
     const diff = Math.abs(valueA - valueB);
     if (diff <= tieTolerance) {
@@ -115,7 +88,37 @@ function getComparisonSentence(metricLabel, stateA, valueA, stateB, valueB, form
     return `${metricLabel}: ${stateB} leads (${formatter(valueB)} vs ${formatter(valueA)}).`;
 }
 
+function ComparisonSummaryCard({ title, value, detail }) {
+    return (
+        <div className="card comparison-summary-card">
+            <p className="summary-label">{title}</p>
+            <p className="summary-value">{value}</p>
+            <p className="summary-detail">{detail}</p>
+        </div>
+    );
+}
+
+function ComparisonInsightCard({ title, accentClass, lead, items }) {
+    return (
+        <div className={`card comparison-insight-card ${accentClass}`}>
+            <h3 className="card-title">{title}</h3>
+            <p className="comparison-insight-lead">{lead}</p>
+            <div className="comparison-insight-grid">
+                {items.map(function (item) {
+                    return (
+                        <div className="comparison-insight-stat" key={item.label}>
+                            <span className="comparison-insight-stat-label">{item.label}</span>
+                            <strong className="comparison-insight-stat-value">{item.value}</strong>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function ComparisonDashboard({ flows, flowType, threshold, stateA, stateB }) {
+    const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
     const [d12Data, setD12Data] = useState([]);
     const [d04Data, setD04Data] = useState([]);
@@ -123,6 +126,10 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
     const [d10Data, setD10Data] = useState([]);
 
     useEffect(function () {
+        loadCsv('/D02_cleaned.csv', function (row) {
+            return { ...row, AreaName: normalizeName(row.AreaName), Origin: normalizeName(row.Origin || row.LastResidence) };
+        }, setD02Data, function (err) { console.error('D02 fetch error:', err); }, Papa);
+
         loadCsv('/D03_cleaned.csv', function (row) {
             return { ...row, AreaName: normalizeName(row.AreaName), Origin: normalizeName(row.Origin || row.LastResidence) };
         }, setD03Data, function (err) { console.error('D03 fetch error:', err); }, Papa);
@@ -179,9 +186,22 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
         const totalFlow = sum(relevantFlows.map(function (row) { return row.count; }));
         const totalMale = sum(relevantFlows.map(function (row) { return row.male; }));
         const totalFemale = sum(relevantFlows.map(function (row) { return row.female; }));
+        const totalUrban = sum(relevantFlows.map(function (row) { return row.urban; }));
+        const totalRural = sum(relevantFlows.map(function (row) { return row.rural; }));
         const femaleShare = getShare(totalFemale, totalFlow);
+        const urbanShare = getShare(totalUrban, totalUrban + totalRural);
 
         const counterpartRows = toCounterpartRows(relevantFlows, flowType);
+        const durationLabels = ['<1 yr', '1-4 yr', '5-9 yr', '10-19 yr', '20+ yr', 'Not stated'];
+        const durationKeys = ['Persons_LT1yr', 'Persons_1to4yr', 'Persons_5to9yr', 'Persons_10to19yr', 'Persons_20plusyr', 'Persons_DurNS'];
+        const durationTotals = durationKeys.map(function (key) {
+            let total = 0;
+            for (let i = 0; i < d02Data.length; i++) {
+                if (!rowMatchesFlowState(d02Data[i], stateName)) continue;
+                total += Number(d02Data[i][key]) || 0;
+            }
+            return total;
+        });
 
         const reasonTotals = REASON_KEYS.map(function (key) {
             let total = 0;
@@ -226,8 +246,13 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             totalFlow,
             totalMale,
             totalFemale,
+            totalUrban,
+            totalRural,
             femaleShare,
+            urbanShare,
             counterpartRows,
+            durationLabels,
+            durationTotals,
             reasonRows,
             reasonShares,
             ageTotals,
@@ -243,86 +268,165 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
     const stateAMetrics = computeStateMetrics(stateA);
     const stateBMetrics = computeStateMetrics(stateB);
 
-    const topCounterpartsVolume = buildTopComparison(stateAMetrics.counterpartRows, stateBMetrics.counterpartRows, COUNTERPART_LIMIT_VOLUME);
+    const counterpartAxisTitle = flowType === 'inflow' ? 'Top Origins' : 'Top Destinations';
+    const stateATopCounterparts = getTopN(stateAMetrics.counterpartRows, COUNTERPART_LIMIT_VOLUME);
+    const stateBTopCounterparts = getTopN(stateBMetrics.counterpartRows, COUNTERPART_LIMIT_VOLUME);
+    const stateATopCounterpart = stateAMetrics.counterpartRows[0] || null;
+    const stateBTopCounterpart = stateBMetrics.counterpartRows[0] || null;
+    const stateALeadingReason = getTopN(stateAMetrics.reasonRows, 1)[0] || null;
+    const stateBLeadingReason = getTopN(stateBMetrics.reasonRows, 1)[0] || null;
+    const stateAReasonTotal = sum(stateAMetrics.reasonRows.map(function (row) { return row.value; }));
+    const stateBReasonTotal = sum(stateBMetrics.reasonRows.map(function (row) { return row.value; }));
+    const flowLeader = stateAMetrics.totalFlow >= stateBMetrics.totalFlow ? stateA : stateB;
+    const flowLeaderValue = stateAMetrics.totalFlow >= stateBMetrics.totalFlow ? stateAMetrics.totalFlow : stateBMetrics.totalFlow;
+    const flowGap = Math.abs(stateAMetrics.totalFlow - stateBMetrics.totalFlow);
+    const literacyLeader = stateAMetrics.literacyRate >= stateBMetrics.literacyRate ? stateA : stateB;
+    const literacyLeaderValue = stateAMetrics.literacyRate >= stateBMetrics.literacyRate ? stateAMetrics.literacyRate : stateBMetrics.literacyRate;
+    const urbanLeader = stateAMetrics.urbanShare >= stateBMetrics.urbanShare ? stateA : stateB;
+    const urbanLeaderValue = stateAMetrics.urbanShare >= stateBMetrics.urbanShare ? stateAMetrics.urbanShare : stateBMetrics.urbanShare;
+    const femaleLeader = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateA : stateB;
+    const femaleLeaderValue = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateAMetrics.femaleShare : stateBMetrics.femaleShare;
 
-    const topCounterpartsDrivers = buildTopComparison(stateAMetrics.counterpartRows, stateBMetrics.counterpartRows, COUNTERPART_LIMIT_DRIVERS);
-
-    const insights = [
-        getComparisonSentence(
-            'Higher migration volume',
-            stateA,
-            stateAMetrics.totalFlow,
-            stateB,
-            stateBMetrics.totalFlow,
-            function (value) { return Number(value).toLocaleString(); },
-            0
-        ),
-        getComparisonSentence(
-            'Higher female share',
-            stateA,
-            stateAMetrics.femaleShare,
-            stateB,
-            stateBMetrics.femaleShare,
-            formatPercent,
-            0.1
-        ),
-        getComparisonSentence(
-            'Stronger work-driven migration',
-            stateA,
-            stateAMetrics.reasonShares.Work || 0,
-            stateB,
-            stateBMetrics.reasonShares.Work || 0,
-            formatPercent,
-            0.1
-        ),
-        getComparisonSentence(
-            'Stronger marriage migration',
-            stateA,
-            stateAMetrics.reasonShares.Marriage || 0,
-            stateB,
-            stateBMetrics.reasonShares.Marriage || 0,
-            formatPercent,
-            0.1
-        )
-    ];
-
-    const counterpartAxisTitle = flowType === 'inflow' ? 'Top Origin States' : 'Top Destination States';
+    if (stateA === 'TELANGANA' || stateB === 'TELANGANA') {
+        return (
+            <div className="warning">
+                <h2 className="warning-title">Cannot Compare with TELANGANA</h2>
+                <div className="warning-box">
+                    <p className="warning-bold">Comparison Not Available</p>
+                    <p className="warning-msg">Telangana was formed in June 2014. This dashboard uses Census 2011 datasets, so Telangana cannot be used in comparison mode.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="wrapper comparison-dashboard">
-            <ComparisonHeader stateA={stateA} stateB={stateB} flowType={flowType} />
-            <ComparisonInsights insights={insights} />
+            <ComparisonHeader
+                stateA={stateA}
+                stateB={stateB}
+                flowType={flowType}
+                totalFlowA={stateAMetrics.totalFlow}
+                totalFlowB={stateBMetrics.totalFlow}
+            />
+
+            <section className="comparison-grid comparison-summary-grid">
+                <ComparisonSummaryCard
+                    title="Higher migration volume"
+                    value={flowLeader}
+                    detail={`${flowLeaderValue.toLocaleString()} migrants, gap of ${flowGap.toLocaleString()}`}
+                />
+                <ComparisonSummaryCard
+                    title="Stronger literacy profile"
+                    value={literacyLeader}
+                    detail={`${formatPercent(literacyLeaderValue)} literate migrants`}
+                />
+                <ComparisonSummaryCard
+                    title="More urban profile"
+                    value={urbanLeader}
+                    detail={`${formatPercent(urbanLeaderValue)} urban share`}
+                />
+                <ComparisonSummaryCard
+                    title="Higher female share"
+                    value={femaleLeader}
+                    detail={`${formatPercent(femaleLeaderValue)} female share`}
+                />
+            </section>
 
             <section className="comparison-section">
-                <h3 className="comparison-section-title">SECTION 1 - Migration Volume</h3>
-                <div className="comparison-grid comparison-grid-2">
+                <div className="comparison-grid comparison-grid-3 comparison-grid-counterparts">
                     <div className="card">
-                        <h3 className="card-title">Total Migrants</h3>
-                        <div className="comparison-kpi-row">
-                            <div className="comparison-kpi-tile state-a-tile">
-                                <p className="comparison-kpi-label">State A: {stateA}</p>
-                                <p className="comparison-kpi-value">{stateAMetrics.totalFlow.toLocaleString()}</p>
-                            </div>
-                            <div className="comparison-kpi-tile state-b-tile">
-                                <p className="comparison-kpi-label">State B: {stateB}</p>
-                                <p className="comparison-kpi-value">{stateBMetrics.totalFlow.toLocaleString()}</p>
-                            </div>
+                        <h3 className="card-title">{stateA} {counterpartAxisTitle}</h3>
+                        <div className="chart-box-tall">
+                            {stateATopCounterparts.length > 0 ? (
+                                <Bar
+                                    data={{
+                                        labels: stateATopCounterparts.map(function (row) { return row.name; }),
+                                        datasets: [
+                                            { label: stateA, data: stateATopCounterparts.map(function (row) { return row.value; }), backgroundColor: COUNTERPART_COLORS[0], borderRadius: 6, maxBarThickness: 34 }
+                                        ]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        plugins: { legend: { display: false } },
+                                        scales: {
+                                            y: { beginAtZero: true },
+                                            x: { grid: { display: false } }
+                                        },
+                                        animation: false
+                                    }}
+                                />
+                            ) : (
+                                <p className="no-data">No counterpart data above threshold.</p>
+                            )}
                         </div>
                     </div>
 
                     <div className="card">
-                        <h3 className="card-title">{counterpartAxisTitle}</h3>
-                        <div className="chart-box-tall">
-                            {topCounterpartsVolume.labels.length > 0 ? (
+                        <h3 className="card-title">{counterpartAxisTitle} Comparison</h3>
+                        <div className="chart-box">
+                            {stateATopCounterparts.length > 0 || stateBTopCounterparts.length > 0 ? (
                                 <Bar
                                     data={{
-                                        labels: topCounterpartsVolume.labels,
+                                        labels: Array.from(new Set(
+                                            stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
+                                        )),
                                         datasets: [
-                                            { label: stateA, data: topCounterpartsVolume.valuesA, backgroundColor: STATE_A_COLOR, borderRadius: 6 },
-                                            { label: stateB, data: topCounterpartsVolume.valuesB, backgroundColor: STATE_B_COLOR, borderRadius: 6 }
+                                            {
+                                                label: stateA,
+                                                data: Array.from(new Set(
+                                                    stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
+                                                )).map(function (label) {
+                                                    const match = stateATopCounterparts.find(function (row) { return row.name === label; });
+                                                    return match ? match.value : 0;
+                                                }),
+                                                backgroundColor: COUNTERPART_COLORS[0],
+                                                borderRadius: 6,
+                                                maxBarThickness: 30
+                                            },
+                                            {
+                                                label: stateB,
+                                                data: Array.from(new Set(
+                                                    stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
+                                                )).map(function (label) {
+                                                    const match = stateBTopCounterparts.find(function (row) { return row.name === label; });
+                                                    return match ? match.value : 0;
+                                                }),
+                                                backgroundColor: COUNTERPART_COLORS[1],
+                                                borderRadius: 6,
+                                                maxBarThickness: 30
+                                            }
                                         ]
                                     }}
-                                    options={horizontalBarOptions}
+                                    options={stackedBarOptions}
+                                />
+                            ) : (
+                                <p className="no-data">No counterpart data above threshold.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <h3 className="card-title">{stateB} {counterpartAxisTitle}</h3>
+                        <div className="chart-box-tall">
+                            {stateBTopCounterparts.length > 0 ? (
+                                <Bar
+                                    data={{
+                                        labels: stateBTopCounterparts.map(function (row) { return row.name; }),
+                                        datasets: [
+                                            { label: stateB, data: stateBTopCounterparts.map(function (row) { return row.value; }), backgroundColor: COUNTERPART_COLORS[1], borderRadius: 6, maxBarThickness: 34 }
+                                        ]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        plugins: { legend: { display: false } },
+                                        scales: {
+                                            y: { beginAtZero: true },
+                                            x: { grid: { display: false } }
+                                        },
+                                        animation: false
+                                    }}
                                 />
                             ) : (
                                 <p className="no-data">No counterpart data above threshold.</p>
@@ -333,7 +437,6 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             </section>
 
             <section className="comparison-section">
-                <h3 className="comparison-section-title">SECTION 2 - Demographics</h3>
                 <div className="comparison-grid comparison-grid-2">
                     <div className="card">
                         <h3 className="card-title">Age Distribution</h3>
@@ -342,75 +445,27 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                                 data={{
                                     labels: AGE_LABELS,
                                     datasets: [
-                                        { label: stateA, data: stateAMetrics.ageTotals, backgroundColor: STATE_A_COLOR, borderRadius: 5 },
-                                        { label: stateB, data: stateBMetrics.ageTotals, backgroundColor: STATE_B_COLOR, borderRadius: 5 }
+                                        { label: stateA, data: stateAMetrics.ageTotals, backgroundColor: AGE_COLORS[0], borderRadius: 5, maxBarThickness: 52 },
+                                        { label: stateB, data: stateBMetrics.ageTotals, backgroundColor: AGE_COLORS[1], borderRadius: 5, maxBarThickness: 52 }
                                     ]
                                 }}
-                                options={groupedBarOptions}
+                                options={stackedBarOptions}
                             />
                         </div>
                     </div>
 
                     <div className="card">
-                        <h3 className="card-title">Gender Distribution</h3>
+                        <h3 className="card-title">Duration of Stay</h3>
                         <div className="chart-box">
                             <Bar
                                 data={{
-                                    labels: ['Male', 'Female'],
+                                    labels: stateAMetrics.durationLabels,
                                     datasets: [
-                                        { label: stateA, data: [stateAMetrics.totalMale, stateAMetrics.totalFemale], backgroundColor: STATE_A_COLOR, borderRadius: 5 },
-                                        { label: stateB, data: [stateBMetrics.totalMale, stateBMetrics.totalFemale], backgroundColor: STATE_B_COLOR, borderRadius: 5 }
+                                        { label: stateA, data: stateAMetrics.durationTotals, backgroundColor: '#f97316', borderRadius: 5, maxBarThickness: 52 },
+                                        { label: stateB, data: stateBMetrics.durationTotals, backgroundColor: '#fb7185', borderRadius: 5, maxBarThickness: 52 }
                                     ]
                                 }}
-                                options={groupedBarOptions}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <h3 className="card-title">Literacy Rate Comparison</h3>
-                        <div className="chart-box">
-                            <Bar
-                                data={{
-                                    labels: [stateA, stateB],
-                                    datasets: [
-                                        {
-                                            label: 'Literate %',
-                                            data: [stateAMetrics.literacyRate, stateBMetrics.literacyRate],
-                                            backgroundColor: '#22c55e',
-                                            borderRadius: 5
-                                        },
-                                        {
-                                            label: 'Illiterate %',
-                                            data: [100 - stateAMetrics.literacyRate, 100 - stateBMetrics.literacyRate],
-                                            backgroundColor: '#ef4444',
-                                            borderRadius: 5
-                                        }
-                                    ]
-                                }}
-                                options={{
-                                    ...groupedBarOptions,
-                                    scales: {
-                                        ...groupedBarOptions.scales,
-                                        y: { beginAtZero: true, max: 100 }
-                                    }
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <h3 className="card-title">Education Levels</h3>
-                        <div className="chart-box">
-                            <Bar
-                                data={{
-                                    labels: EDUCATION_LABELS,
-                                    datasets: [
-                                        { label: stateA, data: stateAMetrics.educationValues, backgroundColor: STATE_A_COLOR, borderRadius: 5 },
-                                        { label: stateB, data: stateBMetrics.educationValues, backgroundColor: STATE_B_COLOR, borderRadius: 5 }
-                                    ]
-                                }}
-                                options={horizontalBarOptions}
+                                options={stackedBarOptions}
                             />
                         </div>
                     </div>
@@ -418,8 +473,47 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             </section>
 
             <section className="comparison-section">
-                <h3 className="comparison-section-title">SECTION 3 - Social Profile</h3>
-                <div className="comparison-grid comparison-grid-2">
+                <div className="comparison-grid comparison-grid-3 comparison-grid-insight">
+                    <div className="card">
+                        <h3 className="card-title">Education Levels</h3>
+                        <div className="chart-box">
+                            <Bar
+                                data={{
+                                    labels: EDUCATION_LABELS,
+                                    datasets: [
+                                        { label: stateA, data: stateAMetrics.educationValues, backgroundColor: EDUCATION_COLORS[0], borderRadius: 5, maxBarThickness: 52 },
+                                        { label: stateB, data: stateBMetrics.educationValues, backgroundColor: EDUCATION_COLORS[1], borderRadius: 5, maxBarThickness: 52 }
+                                    ]
+                                }}
+                                options={stackedBarOptions}
+                            />
+                        </div>
+                    </div>
+
+                    <ComparisonInsightCard
+                        title="Comparison Notes"
+                        accentClass="comparison-insight-primary"
+                        lead={getComparisonSentence(
+                            'Migration volume',
+                            stateA,
+                            stateAMetrics.totalFlow,
+                            stateB,
+                            stateBMetrics.totalFlow,
+                            function (value) { return Number(value).toLocaleString(); },
+                            0
+                        )}
+                        items={[
+                            { label: `${stateA} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateATopCounterpart ? stateATopCounterpart.name : 'No data' },
+                            { label: `${stateB} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateBTopCounterpart ? stateBTopCounterpart.name : 'No data' },
+                            { label: `${stateA} leading reason`, value: stateALeadingReason ? `${stateALeadingReason.label} | ${formatPercent(getShare(stateALeadingReason.value, stateAReasonTotal))}` : 'No data' },
+                            { label: `${stateB} leading reason`, value: stateBLeadingReason ? `${stateBLeadingReason.label} | ${formatPercent(getShare(stateBLeadingReason.value, stateBReasonTotal))}` : 'No data' },
+                            { label: `${stateA} female share`, value: formatPercent(stateAMetrics.femaleShare) },
+                            { label: `${stateB} female share`, value: formatPercent(stateBMetrics.femaleShare) },
+                            { label: `${stateA} literacy`, value: formatPercent(stateAMetrics.literacyRate) },
+                            { label: `${stateB} literacy`, value: formatPercent(stateBMetrics.literacyRate) }
+                        ]}
+                    />
+
                     <div className="card">
                         <h3 className="card-title">Economic Activity Profile</h3>
                         <div className="chart-box">
@@ -427,11 +521,56 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                                 data={{
                                     labels: ACTIVITY_LABELS,
                                     datasets: [
-                                        { label: stateA, data: stateAMetrics.activityValues, backgroundColor: STATE_A_COLOR, borderRadius: 5 },
-                                        { label: stateB, data: stateBMetrics.activityValues, backgroundColor: STATE_B_COLOR, borderRadius: 5 }
+                                        {
+                                            label: stateA,
+                                            data: stateAMetrics.activityValues,
+                                            backgroundColor: ACTIVITY_COLORS[0],
+                                            borderRadius: 5,
+                                            maxBarThickness: 64
+                                        },
+                                        {
+                                            label: stateB,
+                                            data: stateBMetrics.activityValues,
+                                            backgroundColor: ACTIVITY_COLORS[1],
+                                            borderRadius: 5,
+                                            maxBarThickness: 64
+                                        }
                                     ]
                                 }}
-                                options={groupedBarOptions}
+                                options={stackedBarOptions}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="comparison-section">
+                <div className="comparison-grid comparison-grid-2">
+
+                    <div className="card">
+                        <h3 className="card-title">Reasons for Migration</h3>
+                        <div className="chart-box">
+                            <Bar
+                                data={{
+                                    labels: REASON_LABELS,
+                                    datasets: [
+                                        {
+                                            label: stateA,
+                                            data: stateAMetrics.reasonRows.map(function (row) { return row.value; }),
+                                            backgroundColor: REASON_COLORS[0],
+                                            borderRadius: 5,
+                                            maxBarThickness: 52
+                                        },
+                                        {
+                                            label: stateB,
+                                            data: stateBMetrics.reasonRows.map(function (row) { return row.value; }),
+                                            backgroundColor: REASON_COLORS[1],
+                                            borderRadius: 5,
+                                            maxBarThickness: 52
+                                        }
+                                    ]
+                                }}
+                                options={stackedBarOptions}
                             />
                         </div>
                     </div>
@@ -443,67 +582,17 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                                 data={{
                                     labels: MARITAL_LABELS,
                                     datasets: [
-                                        { label: stateA, data: stateAMetrics.maritalValues, backgroundColor: STATE_A_COLOR, borderRadius: 5 },
-                                        { label: stateB, data: stateBMetrics.maritalValues, backgroundColor: STATE_B_COLOR, borderRadius: 5 }
+                                        { label: stateA, data: stateAMetrics.maritalValues, backgroundColor: MARITAL_COLORS[0], borderRadius: 5, maxBarThickness: 52 },
+                                        { label: stateB, data: stateBMetrics.maritalValues, backgroundColor: MARITAL_COLORS[1], borderRadius: 5, maxBarThickness: 52 }
                                     ]
                                 }}
-                                options={horizontalBarOptions}
+                                options={stackedBarOptions}
                             />
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section className="comparison-section">
-                <h3 className="comparison-section-title">SECTION 4 - Migration Drivers</h3>
-                <div className="comparison-grid comparison-grid-2">
-                    <div className="card">
-                        <h3 className="card-title">Reasons for Migration</h3>
-                        <div className="chart-box">
-                            <Bar
-                                data={{
-                                    labels: REASON_LABELS,
-                                    datasets: [
-                                        {
-                                            label: stateA,
-                                            data: stateAMetrics.reasonRows.map(function (row) { return row.value; }),
-                                            backgroundColor: STATE_A_COLOR,
-                                            borderRadius: 5
-                                        },
-                                        {
-                                            label: stateB,
-                                            data: stateBMetrics.reasonRows.map(function (row) { return row.value; }),
-                                            backgroundColor: STATE_B_COLOR,
-                                            borderRadius: 5
-                                        }
-                                    ]
-                                }}
-                                options={groupedBarOptions}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <h3 className="card-title">Top Counterpart States</h3>
-                        <div className="chart-box">
-                            {topCounterpartsDrivers.labels.length > 0 ? (
-                                <Bar
-                                    data={{
-                                        labels: topCounterpartsDrivers.labels,
-                                        datasets: [
-                                            { label: stateA, data: topCounterpartsDrivers.valuesA, backgroundColor: STATE_A_COLOR, borderRadius: 6 },
-                                            { label: stateB, data: topCounterpartsDrivers.valuesB, backgroundColor: STATE_B_COLOR, borderRadius: 6 }
-                                        ]
-                                    }}
-                                    options={horizontalBarOptions}
-                                />
-                            ) : (
-                                <p className="no-data">No counterpart data above threshold.</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </section>
         </div>
     );
 }

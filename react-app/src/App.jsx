@@ -137,6 +137,7 @@ function App() {
     }
 
     if (stateB === nextState) return;
+    setStateA(stateB);
     setStateB(nextState);
   };
 
@@ -146,9 +147,6 @@ function App() {
     } else {
       setSelectedState(state);
     }
-    setTimeout(() => {
-      document.getElementById('data-section')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
   };
 
   const handleClearSelection = () => {
@@ -167,12 +165,16 @@ function App() {
   const handleToggleCompareMode = () => {
     if (!compareMode) {
       setCompareMode(true);
-      if (selectedState && !stateA) setStateA(selectedState);
+      setStateA(null);
+      setStateB(null);
+      setSelectedState(null);
       return;
     }
 
     setCompareMode(false);
-    setSelectedState(stateA || stateB || selectedState || null);
+    setStateA(null);
+    setStateB(null);
+    setSelectedState(null);
   };
 
   // loading screen
@@ -237,8 +239,6 @@ function App() {
                   threshold={threshold}
                   setThreshold={setThreshold}
                   onCollapse={() => setSidebarOpen(false)}
-                  onClearSelection={handleClearSelection}
-                  onMapAction={handleMapAction}
                   topFlowLimit={topFlowLimit}
                   setTopFlowLimit={setTopFlowLimit}
                   highlightTopCorridors={highlightTopCorridors}
@@ -255,13 +255,35 @@ function App() {
                 onClick={() => setSidebarOpen(true)}
                 className="expand-btn"
                 title="Expand sidebar"
+                aria-label="Expand sidebar"
               >
-                <span className="chevron">{">>"}</span>
+                <i className="pi pi-chevron-right chevron-icon" aria-hidden="true" />
               </button>
             )}
           </aside>
 
           <main className="map-area">
+            <div className="map-overlay-actions">
+              <button
+                type="button"
+                className="map-overlay-btn"
+                onClick={() => handleMapAction('reset-view')}
+                title="Reset map view"
+                aria-label="Reset map view"
+              >
+                <i className="pi pi-compass" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="map-overlay-btn"
+                onClick={handleClearSelection}
+                title="Clear selection"
+                aria-label="Clear selection"
+                disabled={compareMode ? (!stateA && !stateB) : !selectedState}
+              >
+                <i className="pi pi-times" aria-hidden="true" />
+              </button>
+            </div>
             <MapView
               flows={flows}
               flowType={flowType}
@@ -290,6 +312,7 @@ function App() {
             />
           ) : (
             <DataSection
+              key={`${activeSelectedState || 'none'}-${flowType}-${threshold}`}
               flows={flows}
               flowType={flowType}
               selectedState={activeSelectedState}

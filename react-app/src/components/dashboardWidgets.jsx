@@ -94,21 +94,3 @@ export function DrilldownPanel({ title, detail }) {
     );
 }
 
-export function loadCsv(path, transformRow, onData, onError, Papa) {
-    fetch(path)
-        .then(function (r) { return r.text(); })
-        .then(function (txt) {
-            const result = Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true });
-            const rows = [];
-            for (let i = 0; i < result.data.length; i++) {
-                const row = transformRow(result.data[i]);
-                if (row) rows.push(row);
-            }
-            onData(rows);
-        })
-        .catch(function (err) {
-            onError(err);
-            onData([]);
-        });
-}
-

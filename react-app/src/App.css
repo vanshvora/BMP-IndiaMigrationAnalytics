@@ -175,7 +175,7 @@
 }
 
 .closed {
-  width: 44px;
+  width: 52px;
 }
 
 .scroll-area {
@@ -201,9 +201,8 @@
   color: #1c1917;
 }
 
-.chevron {
-  font-size: 16px;
-  font-weight: 700;
+.chevron-icon {
+  font-size: 18px;
 }
 
 .map-area {
@@ -211,6 +210,43 @@
   position: relative;
   background: #f5f5f4;
   min-width: 0;
+}
+
+.map-overlay-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+}
+
+.map-overlay-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.map-overlay-btn:hover {
+  background: #ffffff;
+  color: var(--flow-accent, #0ea5e9);
+  border-color: #bfdbfe;
+}
+
+.map-overlay-btn:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(226, 232, 240, 0.96);
 }
 
 .data-area {
