@@ -1,0 +1,55 @@
+.district-control-panel {
+  background: #eefcf7;
+}
+
+.district-filter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.district-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #0f766e;
+}
+
+.district-picker {
+  width: 100%;
+  border: 1px solid #99f6e4;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #134e4a;
+  font-size: 14px;
+}
+
+.district-picker:disabled {
+  background: #f0fdfa;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.district-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.district-chip {
+  font-size: 12px;
+  font-weight: 700;
+  color: #115e59;
+  background: #ccfbf1;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.district-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #0f766e;
+}

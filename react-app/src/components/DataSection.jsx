@@ -109,6 +109,7 @@ function FlipChartCard({
 }
 
 export default function DataSection({ flows, flowType, selectedState, threshold }) {
+    const [durationFlipped, setDurationFlipped] = useState(false);
     const [reasonsFlipped, setReasonsFlipped] = useState(false);
     const [ageFlipped, setAgeFlipped] = useState(false);
     const [educationFlipped, setEducationFlipped] = useState(false);
@@ -214,7 +215,23 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
 
     const durationLabels = ['<1 yr', '1-4 yr', '5-9 yr', '10-19 yr', '20+ yr', 'Not stated'];
     const durationKeys = ['Persons_LT1yr', 'Persons_1to4yr', 'Persons_5to9yr', 'Persons_10to19yr', 'Persons_20plusyr', 'Persons_DurNS'];
+    const durationMaleKeys = ['Males_LT1yr', 'Males_1to4yr', 'Males_5to9yr', 'Males_10to19yr', 'Males_20plusyr', 'Males_DurNS'];
+    const durationFemaleKeys = ['Females_LT1yr', 'Females_1to4yr', 'Females_5to9yr', 'Females_10to19yr', 'Females_20plusyr', 'Females_DurNS'];
     const durationTotals = durationKeys.map(function (key) {
+        let total = 0;
+        for (let i = 0; i < d02Data.length; i++) {
+            if (rowMatchesState(d02Data[i])) total += Number(d02Data[i][key]) || 0;
+        }
+        return total;
+    });
+    const durationMaleTotals = durationMaleKeys.map(function (key) {
+        let total = 0;
+        for (let i = 0; i < d02Data.length; i++) {
+            if (rowMatchesState(d02Data[i])) total += Number(d02Data[i][key]) || 0;
+        }
+        return total;
+    });
+    const durationFemaleTotals = durationFemaleKeys.map(function (key) {
         let total = 0;
         for (let i = 0; i < d02Data.length; i++) {
             if (rowMatchesState(d02Data[i])) total += Number(d02Data[i][key]) || 0;
@@ -520,7 +537,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             </section>
 
             <section className="profile-grid">
-                <div className="card compact-card">
+                <div className="card compact-card duration-card">
                     <h3 className="card-title">Male / Female</h3>
                     <SourceTag tableName="D01" />
                     <BreakdownPie
@@ -567,30 +584,53 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                 <div className="card compact-card">
                     <h3 className="card-title">Duration of Stay</h3>
                     <SourceTag tableName="D02" />
-                    <div className="chart-box social-chart">
-                        <Bar
-                            data={{
-                                labels: durationLabels,
-                                datasets: [{
-                                    label: 'Persons',
-                                    data: durationTotals,
-                                    backgroundColor: chartColors.duration,
-                                    borderRadius: 8,
-                                    maxBarThickness: 52
-                                }]
-                            }}
-                            options={{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: { legend: { display: false } },
-                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                animation: false
-                            }}
-                        />
+                    <div className="flip-box social-flip-box">
+                        <div className={`flip-inner ${durationFlipped ? 'flipped' : ''}`}>
+                            <div className="side">
+                                <div className="chart-box social-chart">
+                                    <Bar
+                                        data={{
+                                            labels: durationLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: durationTotals,
+                                                backgroundColor: chartColors.duration,
+                                                borderRadius: 8,
+                                                maxBarThickness: 52
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="side back-side">
+                                <div className="chart-box social-chart">
+                                    <Bar
+                                        data={{
+                                            labels: durationLabels,
+                                            datasets: [
+                                                { label: 'Male', data: durationMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
+                                                { label: 'Female', data: durationFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div className="footer">
-                        <span>Total duration records: {durationTotal.toLocaleString()}</span>
-                        <span>Gender split is not available in D02.</span>
+                        <span>{durationFlipped ? 'Gender split by duration' : `Total duration records: ${durationTotal.toLocaleString()}`}</span>
+                        <button type="button" className="link-btn" onClick={() => setDurationFlipped(function (value) { return !value; })}>
+                            {durationFlipped ? 'Show main chart' : 'Show gender split'}
+                        </button>
                     </div>
                 </div>
 

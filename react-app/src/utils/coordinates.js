@@ -38,6 +38,8 @@ export const COORDINATES = {
     "CHHATTISGARH": [21.2787, 81.8661],
     "MADHYA PRADESH": [22.9734, 78.6569],
     "GUJARAT": [22.2587, 71.1924],
+    "DAMAN & DIU": [20.4283, 72.8397],
+    "DADRA & NAGAR HAVELI": [20.2666, 73.0166],
     "DADRA & NAGAR HAVELI AND DAMAN & DIU": [20.1809, 73.0169],
     "MAHARASHTRA": [19.7515, 75.7139],
     "GOA": [15.2993, 74.1240],
@@ -123,6 +125,35 @@ export function normalizeName(name) {
         return mapping[n];
     }
     return n;
+}
+
+export function normalizeDistrictName(name) {
+    if (!name) return "";
+
+    let n = String(name).toUpperCase().trim();
+    n = n.replace(/\s+/g, " ");
+    n = n.replace(/[.'`]/g, "");
+    n = n.replace(/&/g, "AND");
+    n = n.replace(/\((.*?)\)/g, " $1 ");
+    n = n.replace(/-/g, " ");
+    n = n.replace(/\bDISTRICT\b/g, "");
+    n = n.replace(/\bTHE\b/g, "");
+    n = n.replace(/\s+/g, " ").trim();
+
+    const mapping = {
+        "AHMADABAD": "AHMADABAD",
+        "BANGALORE": "BENGALURU",
+        "BANGALORE RURAL": "BENGALURU RURAL",
+        "MUMBAI SUBURBAN": "MUMBAI SUBURBAN",
+        "MUMBAI": "MUMBAI",
+        "LEH LADAKH": "LEH LADAKH",
+        "THE DANGS": "DANG",
+        "DADRA AND NAGAR HAVELI": "DADRA AND NAGAR HAVELI",
+        "NORTH AND MIDDLE ANDAMAN": "NORTH AND MIDDLE ANDAMAN",
+        "SOUTH ANDAMAN": "SOUTH ANDAMAN",
+    };
+
+    return mapping[n] || n;
 }
 
 // this calculates a curved control point for drawing flow lines on the map

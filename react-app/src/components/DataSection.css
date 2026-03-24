@@ -179,6 +179,10 @@
   .profile-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .profile-grid.two-up {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .summary-card {
@@ -305,6 +309,10 @@
   min-height: 275px;
 }
 
+.duration-card {
+  min-height: 380px;
+}
+
 .profile-grid .compact-card {
   min-height: 330px;
 }
@@ -375,6 +383,24 @@
 
 .back-side {
   transform: rotateY(180deg);
+}
+
+.social-flip-box .flip-inner {
+  min-height: 100%;
+  height: 100%;
+}
+
+.social-flip-box .side {
+  height: 100%;
+}
+
+.duration-card .social-flip-box {
+  min-height: 300px;
+}
+
+.social-flip-box .social-chart {
+  min-height: 300px;
+  height: 100%;
 }
 
 .feature-card .side .pie-box {
