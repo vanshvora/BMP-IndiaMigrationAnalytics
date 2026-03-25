@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { COORDINATES, INTERNATIONAL_COORDINATES, getBezierPoints, normalizeName } from '../utils/coordinates';
+import '../utils/leafletCurve';
 import './MapView.css';
 
 const STATE_A_COLORS = { base: '#2563eb', highlight: '#1d4ed8' };
@@ -17,76 +18,6 @@ function getCoords(name) {
 
 // geojson url for india map with state boundaries
 const INDIA_GEOJSON_URL = "https://raw.githubusercontent.com/geohacker/india/master/state/india_telengana.geojson";
-
-// ---- Leaflet Curve Plugin ----
-// we need this to draw curved bezier lines on the map
-// found this on github and modified it slightly
-// it extends the Leaflet Path class to support SVG curves
-(function () {
-    L.Curve = L.Path.extend({
-        options: {},
-        initialize: function (path, options) {
-            L.setOptions(this, options);
-            this._setPath(path);
-        },
-        getPath: function () { return this._coords; },
-        setPath: function (path) { this._setPath(path); return this.redraw(); },
-        getBounds: function () { return this._bounds; },
-        _setPath: function (path) {
-            this._coords = path;
-            this._bounds = this._computeBounds();
-        },
-        _computeBounds: function () {
-            var bound = new L.LatLngBounds();
-            var coords = this._coords;
-            for (var i = 0; i < coords.length; i++) {
-                if (typeof coords[i] !== 'string') {
-                    bound.extend(coords[i]);
-                }
-            }
-            return bound;
-        },
-        getCenter: function () { return this._bounds.getCenter(); },
-        _update: function () {
-            if (!this._map) return;
-            this._updatePath();
-        },
-        _updatePath: function () {
-            this._renderer._updateCurve(this);
-        },
-        _project: function () {
-            this._points = [];
-            for (var i = 0; i < this._coords.length; i++) {
-                if (typeof this._coords[i] !== 'string') {
-                    this._points.push(this._map.latLngToLayerPoint(this._coords[i]));
-                } else {
-                    this._points.push(this._coords[i]);
-                }
-            }
-        }
-    });
-
-    // shortcut function
-    L.curve = function (path, options) { return new L.Curve(path, options); };
-
-    // this part converts curve points to SVG path string
-    L.SVG.include({
-        _updateCurve: function (layer) {
-            this._setPath(layer, this._curvePointsToPath(layer._points));
-        },
-        _curvePointsToPath: function (points) {
-            var str = '';
-            for (var i = 0; i < points.length; i++) {
-                if (typeof points[i] === 'string') {
-                    str += points[i] + ' ';
-                } else {
-                    str += points[i].x + ',' + points[i].y + ' ';
-                }
-            }
-            return str.trim();
-        }
-    });
-})();
 
 function MapActionController({ mapAction, selectedState }) {
     const map = useMap();

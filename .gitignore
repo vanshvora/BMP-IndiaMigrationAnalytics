@@ -43,3 +43,6 @@ __pycache__/
 # OS files
 Desktop.ini
 ehthumbs.db
+ 
+#map cache
+.map_cache/

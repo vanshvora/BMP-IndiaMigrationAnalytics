@@ -3,6 +3,7 @@ import Papa from 'papaparse';
 import DistrictMapView from './DistrictMapView';
 import DistrictDataSection from './DistrictDataSection';
 import DistrictSidebar from './DistrictSidebar';
+import DistrictMapPopup from './DistrictMapPopup';
 import { normalizeDistrictName } from '../utils/coordinates';
 import { loadCsv } from '../utils/loadCsv';
 
@@ -191,6 +192,12 @@ export default function DistrictDashboardPage() {
                         flows={stateDistrictRecords}
                         threshold={threshold}
                         mapAction={mapAction}
+                    />
+
+                    {/* District map preview popup — right side, vertically centered */}
+                    <DistrictMapPopup
+                        selectedState={selectedState}
+                        selectedDistrict={selectedDistrict}
                     />
                 </main>
             </div>

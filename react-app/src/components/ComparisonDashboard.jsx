@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import Papa from 'papaparse';
@@ -265,12 +265,31 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
         };
     }
 
-    const stateAMetrics = computeStateMetrics(stateA);
-    const stateBMetrics = computeStateMetrics(stateB);
+    if (stateA === 'TELANGANA' || stateB === 'TELANGANA') {
+        return (
+            <div className="warning">
+                <h2 className="warning-title">Cannot Compare with TELANGANA</h2>
+                <div className="warning-box">
+                    <p className="warning-bold">Comparison Not Available</p>
+                    <p className="warning-msg">Telangana was formed in June 2014. This dashboard uses Census 2011 datasets, so Telangana cannot be used in comparison mode.</p>
+                </div>
+            </div>
+        );
+    }
+
+    const stateAMetrics = useMemo(function () {
+        return computeStateMetrics(stateA);
+    }, [stateA, flows, flowType, threshold, d02Data, d03Data, d12Data, d04Data, d06Data, d10Data]);
+    const stateBMetrics = useMemo(function () {
+        return computeStateMetrics(stateB);
+    }, [stateB, flows, flowType, threshold, d02Data, d03Data, d12Data, d04Data, d06Data, d10Data]);
 
     const counterpartAxisTitle = flowType === 'inflow' ? 'Top Origins' : 'Top Destinations';
     const stateATopCounterparts = getTopN(stateAMetrics.counterpartRows, COUNTERPART_LIMIT_VOLUME);
     const stateBTopCounterparts = getTopN(stateBMetrics.counterpartRows, COUNTERPART_LIMIT_VOLUME);
+    const mergedCounterpartLabels = Array.from(new Set(
+        stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
+    ));
     const stateATopCounterpart = stateAMetrics.counterpartRows[0] || null;
     const stateBTopCounterpart = stateBMetrics.counterpartRows[0] || null;
     const stateALeadingReason = getTopN(stateAMetrics.reasonRows, 1)[0] || null;
@@ -286,18 +305,6 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
     const urbanLeaderValue = stateAMetrics.urbanShare >= stateBMetrics.urbanShare ? stateAMetrics.urbanShare : stateBMetrics.urbanShare;
     const femaleLeader = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateA : stateB;
     const femaleLeaderValue = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateAMetrics.femaleShare : stateBMetrics.femaleShare;
-
-    if (stateA === 'TELANGANA' || stateB === 'TELANGANA') {
-        return (
-            <div className="warning">
-                <h2 className="warning-title">Cannot Compare with TELANGANA</h2>
-                <div className="warning-box">
-                    <p className="warning-bold">Comparison Not Available</p>
-                    <p className="warning-msg">Telangana was formed in June 2014. This dashboard uses Census 2011 datasets, so Telangana cannot be used in comparison mode.</p>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="wrapper comparison-dashboard">
@@ -368,15 +375,11 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                             {stateATopCounterparts.length > 0 || stateBTopCounterparts.length > 0 ? (
                                 <Bar
                                     data={{
-                                        labels: Array.from(new Set(
-                                            stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
-                                        )),
+                                        labels: mergedCounterpartLabels,
                                         datasets: [
                                             {
                                                 label: stateA,
-                                                data: Array.from(new Set(
-                                                    stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
-                                                )).map(function (label) {
+                                                data: mergedCounterpartLabels.map(function (label) {
                                                     const match = stateATopCounterparts.find(function (row) { return row.name === label; });
                                                     return match ? match.value : 0;
                                                 }),
@@ -386,9 +389,7 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                                             },
                                             {
                                                 label: stateB,
-                                                data: Array.from(new Set(
-                                                    stateATopCounterparts.concat(stateBTopCounterparts).map(function (row) { return row.name; })
-                                                )).map(function (label) {
+                                                data: mergedCounterpartLabels.map(function (label) {
                                                     const match = stateBTopCounterparts.find(function (row) { return row.name === label; });
                                                     return match ? match.value : 0;
                                                 }),

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import Papa from 'papaparse';
 import MapView from './MapView';
 import Sidebar from './Sidebar';
 import DataSection from './DataSection';
 import ComparisonDashboard from './ComparisonDashboard';
+import StateMapPopup from './StateMapPopup';
 import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
+import { loadCsv } from '../utils/loadCsv';
 
 const DATA_URL = '/D01_cleaned.csv';
 
@@ -58,26 +61,15 @@ export default function StateDashboardPage() {
     const [stateB, setStateB] = useState(null);
 
     useEffect(() => {
-        async function loadData() {
-            try {
-                const response = await fetch(DATA_URL);
-                const csvText = await response.text();
-                const Papa = await import('papaparse');
-                Papa.default.parse(csvText, {
-                    header: true,
-                    skipEmptyLines: true,
-                    complete: (results) => {
-                        setFlows(processData(results.data));
-                        setLoading(false);
-                    }
-                });
-            } catch (err) {
-                console.error('Error loading state migration data:', err);
-                setLoading(false);
-            }
-        }
-
-        loadData();
+        loadCsv(DATA_URL, function (row) {
+            return row;
+        }, function (rows) {
+            setFlows(processData(rows));
+            setLoading(false);
+        }, function (err) {
+            console.error('Error loading state migration data:', err);
+            setLoading(false);
+        }, Papa);
     }, []);
 
     useEffect(() => {
@@ -186,7 +178,6 @@ export default function StateDashboardPage() {
                     {sidebarOpen ? (
                         <div className="scroll-area">
                             <Sidebar
-                                flows={flows}
                                 flowType={flowType}
                                 setFlowType={setFlowType}
                                 selectedState={activeSelectedState}
@@ -248,6 +239,14 @@ export default function StateDashboardPage() {
                         mapAction={mapAction}
                         topFlowLimit={topFlowLimit}
                         highlightTopCorridors={highlightTopCorridors}
+                        compareMode={compareMode}
+                        stateA={stateA}
+                        stateB={stateB}
+                    />
+
+                    {/* Map preview popup — right side, vertically centered */}
+                    <StateMapPopup
+                        selectedState={selectedState}
                         compareMode={compareMode}
                         stateA={stateA}
                         stateB={stateB}
