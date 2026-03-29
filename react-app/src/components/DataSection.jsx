@@ -109,6 +109,7 @@ function FlipChartCard({
 }
 
 export default function DataSection({ flows, flowType, selectedState, threshold }) {
+    const [activeTab, setActiveTab] = useState('overview');
     const [durationFlipped, setDurationFlipped] = useState(false);
     const [reasonsFlipped, setReasonsFlipped] = useState(false);
     const [ageFlipped, setAgeFlipped] = useState(false);
@@ -407,6 +408,11 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const educationInfoItems = buildDistributionInsights(educationLabels, educationValues, educationMaleValues, educationFemaleValues, 'education');
     const activityInfoItems = buildDistributionInsights(activityLabels, activityValues, activityMaleValues, activityFemaleValues, 'economic activity');
     const maritalInfoItems = buildDistributionInsights(maritalLabels, maritalValues, maritalMaleValues, maritalFemaleValues, 'marital status');
+    const sectionTabs = [
+        { key: 'overview', label: 'Overview' },
+        { key: 'demographics', label: 'Demographics & Social Profile' },
+        { key: 'drivers', label: 'Migration Drivers' }
+    ];
 
     const counterpartTitle = flowType === 'inflow' ? 'Origins' : 'Destinations';
 
@@ -440,6 +446,28 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                 </div>
             </div>
 
+            <div className="section-tabs" role="tablist" aria-label="Dashboard sections">
+                {sectionTabs.map(function (tab) {
+                    const isActive = activeTab === tab.key;
+                    return (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className={`section-tab ${isActive ? 'is-active' : ''}`}
+                            onClick={() => {
+                                setActiveTab(tab.key);
+                                setOpenInfoId(null);
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {activeTab === 'overview' ? (
             <section className="summary-grid">
                 <SummaryStatCard
                     title={`Total ${flowType === 'inflow' ? 'Inflow' : 'Outflow'}`}
@@ -463,7 +491,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                     detail={`${illiteratePersons.toLocaleString()} illiterate migrants`}
                 />
             </section>
+            ) : null}
 
+            {activeTab === 'overview' ? (
             <section className="card counterpart-card">
                 <div className="counterpart-head">
                     <div>
@@ -538,8 +568,11 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                     </div>
                 </div>
             </section>
+            ) : null}
 
+            {(activeTab === 'overview' || activeTab === 'demographics') ? (
             <section className="profile-grid">
+                {activeTab === 'overview' ? (
                 <div className="card compact-card duration-card">
                     <h3 className="card-title">Male / Female</h3>
                     <SourceTag tableName="D01" />
@@ -553,7 +586,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         <span>Female: {formatPercent(getShare(totalFemale, totalFlow))}</span>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'overview' ? (
                 <div className="card compact-card">
                     <h3 className="card-title">Urban / Rural</h3>
                     <SourceTag tableName="D01" />
@@ -567,7 +602,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         <span>Rural: {formatPercent(getShare(totalRural, totalUrban + totalRural))}</span>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'demographics' ? (
                 <div className="card compact-card">
                     <h3 className="card-title">Literate / Illiterate</h3>
                     <SourceTag tableName="D04" />
@@ -581,9 +618,13 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         <span>Illiterate: {formatPercent(getShare(illiteratePersons, literatePersons + illiteratePersons))}</span>
                     </div>
                 </div>
+                ) : null}
             </section>
+            ) : null}
 
+            {(activeTab === 'overview' || activeTab === 'drivers') ? (
             <section className="charts-grid">
+                {activeTab === 'drivers' ? (
                 <div className="card compact-card card-with-info">
                     <ChartInfoPopover infoId="duration" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={durationInfoItems} />
                     <h3 className="card-title">Duration of Stay</h3>
@@ -637,7 +678,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </button>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'overview' ? (
                 <NarrativeInsightCard
                     title="General Migration Insight"
                     accent="#0f766e"
@@ -655,81 +698,91 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         { label: 'Literacy rate', value: literacyShare }
                     ]}
                 />
+                ) : null}
             </section>
+            ) : null}
 
-            <section className="two-column-grid">
-                <FlipChartCard
-                    title="Age Profile"
-                    tableName="D12"
-                    flipped={ageFlipped}
-                    onToggle={() => setAgeFlipped(function (value) { return !value; })}
-                    frontLabel="Age share"
-                    backLabel="Gender split by age"
-                    front={(
-                        <BreakdownPie
-                            labels={ageLabels}
-                            values={ageTotals}
-                            colors={['#0f766e', '#65a30d', '#7c3aed', '#f97316', '#64748b']}
+            {(activeTab === 'demographics' || activeTab === 'drivers') ? (
+                <section className="two-column-grid">
+                    {activeTab === 'demographics' ? (
+                        <FlipChartCard
+                            title="Age Profile"
+                            tableName="D12"
+                            flipped={ageFlipped}
+                            onToggle={() => setAgeFlipped(function (value) { return !value; })}
+                            frontLabel="Age share"
+                            backLabel="Gender split by age"
+                            front={(
+                                <BreakdownPie
+                                    labels={ageLabels}
+                                    values={ageTotals}
+                                    colors={['#0f766e', '#65a30d', '#7c3aed', '#f97316', '#64748b']}
+                                />
+                            )}
+                            back={(
+                                <div className="chart-box feature-chart">
+                                    <Bar
+                                        data={{
+                                            labels: ageLabels,
+                                            datasets: [
+                                                { label: 'Male', data: ageMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
+                                                { label: 'Female', data: ageFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                </div>
+                            )}
+                            footerNote={`Total age records: ${ageTotal.toLocaleString()}`}
+                            infoId="age-profile"
+                            infoItems={ageInfoItems}
+                            openInfoId={openInfoId}
+                            setOpenInfoId={setOpenInfoId}
                         />
-                    )}
-                    back={(
-                        <div className="chart-box feature-chart">
-                            <Bar
-                                data={{
-                                    labels: ageLabels,
-                                    datasets: [
-                                        { label: 'Male', data: ageMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
-                                        { label: 'Female', data: ageFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
-                                    ]
-                                }}
-                                options={buildHorizontalStackedOptions()}
-                            />
-                        </div>
-                    )}
-                    footerNote={`Total age records: ${ageTotal.toLocaleString()}`}
-                    infoId="age-profile"
-                    infoItems={ageInfoItems}
-                    openInfoId={openInfoId}
-                    setOpenInfoId={setOpenInfoId}
-                />
+                    ) : null}
 
-                <FlipChartCard
-                    title="Reason for Migration"
-                    tableName="D03"
-                    flipped={reasonsFlipped}
-                    onToggle={() => setReasonsFlipped(function (value) { return !value; })}
-                    frontLabel="Reason share"
-                    backLabel="Gender split by reason"
-                    front={(
-                        <BreakdownPie
-                            labels={reasonLabels}
-                            values={reasonTotals}
-                            colors={['#0f766e', '#d97706', '#7c3aed', '#b45309', '#ea580c', '#65a30d', '#6b7280']}
+                    {activeTab === 'drivers' ? (
+                        <FlipChartCard
+                            title="Reason for Migration"
+                            tableName="D03"
+                            flipped={reasonsFlipped}
+                            onToggle={() => setReasonsFlipped(function (value) { return !value; })}
+                            frontLabel="Reason share"
+                            backLabel="Gender split by reason"
+                            front={(
+                                <BreakdownPie
+                                    labels={reasonLabels}
+                                    values={reasonTotals}
+                                    colors={['#0f766e', '#d97706', '#7c3aed', '#b45309', '#ea580c', '#65a30d', '#6b7280']}
+                                />
+                            )}
+                            back={(
+                                <div className="chart-box feature-chart">
+                                    <Bar
+                                        data={{
+                                            labels: reasonLabels,
+                                            datasets: [
+                                                { label: 'Male', data: reasonMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
+                                                { label: 'Female', data: reasonFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                </div>
+                            )}
+                            footerNote={`Total reason records: ${reasonTotal.toLocaleString()}`}
+                            infoId="migration-reason"
+                            infoItems={reasonInfoItems}
+                            openInfoId={openInfoId}
+                            setOpenInfoId={setOpenInfoId}
                         />
-                    )}
-                    back={(
-                        <div className="chart-box feature-chart">
-                            <Bar
-                                data={{
-                                    labels: reasonLabels,
-                                    datasets: [
-                                        { label: 'Male', data: reasonMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
-                                        { label: 'Female', data: reasonFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
-                                    ]
-                                }}
-                                options={buildHorizontalStackedOptions()}
-                            />
-                        </div>
-                    )}
-                    footerNote={`Total reason records: ${reasonTotal.toLocaleString()}`}
-                    infoId="migration-reason"
-                    infoItems={reasonInfoItems}
-                    openInfoId={openInfoId}
-                    setOpenInfoId={setOpenInfoId}
-                />
-            </section>
+                    ) : null}
+                </section>
+            ) : null}
 
+            {(activeTab === 'demographics' || activeTab === 'drivers') ? (
             <section className="three-chart-row">
+                {activeTab === 'demographics' ? (
                 <div className="card compact-card card-with-info">
                     <ChartInfoPopover infoId="education-levels" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
                     <h3 className="card-title">Education Levels</h3>
@@ -788,7 +841,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </button>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'drivers' ? (
                 <div className="card compact-card card-with-info">
                     <ChartInfoPopover infoId="economic-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />
                     <h3 className="card-title">Economic Activity</h3>
@@ -847,7 +902,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </button>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'demographics' ? (
                 <div className="card compact-card card-with-info">
                     <ChartInfoPopover infoId="marital-status" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={maritalInfoItems} />
                     <h3 className="card-title">Marital Status</h3>
@@ -906,7 +963,9 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </button>
                     </div>
                 </div>
+                ) : null}
             </section>
+            ) : null}
         </div>
     );
 }

@@ -4,6 +4,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import Papa from 'papaparse';
 import { BreakdownPie } from './dashboardWidgets';
 import { formatPercent, getShare, getTopN } from './dashboardInsights';
+import { buildDistributionInsights, ChartInfoPopover } from './chartInfoUtils';
 import { chartValueLabelPlugin } from '../utils/chartLabels';
 import { normalizeDistrictName, normalizeName } from '../utils/coordinates';
 import { loadCsv } from '../utils/loadCsv';
@@ -37,15 +38,19 @@ function SourceTag({ tableName }) {
 }
 
 export default function DistrictDataSection({ selectedState, selectedDistrict, districtFlows, threshold }) {
+    const [activeTab, setActiveTab] = useState('overview');
+    const [openInfoId, setOpenInfoId] = useState(null);
     const [counterpartMode, setCounterpartMode] = useState('top');
     const [durationFlipped, setDurationFlipped] = useState(false);
     const [educationFlipped, setEducationFlipped] = useState(false);
     const [reasonFlipped, setReasonFlipped] = useState(false);
     const [activityFlipped, setActivityFlipped] = useState(false);
+    const [maritalFlipped, setMaritalFlipped] = useState(false);
     const [districtD02Rows, setDistrictD02Rows] = useState([]);
     const [districtD03Rows, setDistrictD03Rows] = useState([]);
     const [districtD04Rows, setDistrictD04Rows] = useState([]);
     const [districtD06Rows, setDistrictD06Rows] = useState([]);
+    const [districtD10Rows, setDistrictD10Rows] = useState([]);
 
     useEffect(function () {
         loadCsv('/district_duration_residence_flows.csv', function (row) {
@@ -162,6 +167,32 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                 NonWorkersSeeking_Females: Number(row.NonWorkersSeeking_Females) || 0,
             };
         }, setDistrictD06Rows, function (err) { console.error('District D06 fetch error:', err); }, Papa);
+
+        loadCsv('/district_marital_status.csv', function (row) {
+            return {
+                state: normalizeName(row.state),
+                district: row.district,
+                districtCode: Number(row.districtCode) || 0,
+                NeverMarried_Persons: Number(row.NeverMarried_Persons) || 0,
+                NeverMarried_Males: Number(row.NeverMarried_Males) || 0,
+                NeverMarried_Females: Number(row.NeverMarried_Females) || 0,
+                CurrMarried_Persons: Number(row.CurrMarried_Persons) || 0,
+                CurrMarried_Males: Number(row.CurrMarried_Males) || 0,
+                CurrMarried_Females: Number(row.CurrMarried_Females) || 0,
+                Widowed_Persons: Number(row.Widowed_Persons) || 0,
+                Widowed_Males: Number(row.Widowed_Males) || 0,
+                Widowed_Females: Number(row.Widowed_Females) || 0,
+                Separated_Persons: Number(row.Separated_Persons) || 0,
+                Separated_Males: Number(row.Separated_Males) || 0,
+                Separated_Females: Number(row.Separated_Females) || 0,
+                Divorced_Persons: Number(row.Divorced_Persons) || 0,
+                Divorced_Males: Number(row.Divorced_Males) || 0,
+                Divorced_Females: Number(row.Divorced_Females) || 0,
+                Unspecified_Persons: Number(row.Unspecified_Persons) || 0,
+                Unspecified_Males: Number(row.Unspecified_Males) || 0,
+                Unspecified_Females: Number(row.Unspecified_Females) || 0,
+            };
+        }, setDistrictD10Rows, function (err) { console.error('District D10 fetch error:', err); }, Papa);
     }, []);
 
     const relevantFlows = useMemo(function () {
@@ -318,6 +349,54 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
     const activityTotal = sumValues(activityValues);
     const hasActivityData = activityTotal > 0;
 
+    const matchingDistrictD10Row = useMemo(function () {
+        if (!selectedState || !selectedDistrict) return null;
+        for (let i = 0; i < districtD10Rows.length; i++) {
+            const row = districtD10Rows[i];
+            if (row.state !== selectedState) continue;
+            if (selectedDistrictCode > 0 && row.districtCode === selectedDistrictCode) return row;
+            if (selectedDistrictCode === 0 && normalizeDistrictName(row.district) === normalizeDistrictName(selectedDistrict)) return row;
+        }
+        return null;
+    }, [districtD10Rows, selectedDistrict, selectedDistrictCode, selectedState]);
+
+    const maritalRow = matchingDistrictD10Row || {};
+    const maritalLabels = ['Never Married', 'Currently Married', 'Widowed', 'Separated', 'Divorced'];
+    const maritalValues = [
+        Number(maritalRow.NeverMarried_Persons) || 0,
+        Number(maritalRow.CurrMarried_Persons) || 0,
+        Number(maritalRow.Widowed_Persons) || 0,
+        Number(maritalRow.Separated_Persons) || 0,
+        Number(maritalRow.Divorced_Persons) || 0
+    ];
+    const maritalMaleValues = [
+        Number(maritalRow.NeverMarried_Males) || 0,
+        Number(maritalRow.CurrMarried_Males) || 0,
+        Number(maritalRow.Widowed_Males) || 0,
+        Number(maritalRow.Separated_Males) || 0,
+        Number(maritalRow.Divorced_Males) || 0
+    ];
+    const maritalFemaleValues = [
+        Number(maritalRow.NeverMarried_Females) || 0,
+        Number(maritalRow.CurrMarried_Females) || 0,
+        Number(maritalRow.Widowed_Females) || 0,
+        Number(maritalRow.Separated_Females) || 0,
+        Number(maritalRow.Divorced_Females) || 0
+    ];
+    const maritalTotal = sumValues(maritalValues);
+    const hasMaritalData = maritalTotal > 0;
+    const sectionTabs = [
+        { key: 'overview', label: 'Overview' },
+        { key: 'demographics', label: 'Demographics & Social Profile' },
+        { key: 'drivers', label: 'Migration Drivers' }
+    ];
+
+    const durationInfoItems = buildDistributionInsights(durationLabels, durationTotals, durationMaleTotals, durationFemaleTotals, 'duration');
+    const reasonInfoItems = buildDistributionInsights(reasonLabels, reasonTotals, reasonMaleTotals, reasonFemaleTotals, 'migration reason');
+    const educationInfoItems = buildDistributionInsights(educationLabels, educationValues, educationMaleValues, educationFemaleValues, 'education');
+    const activityInfoItems = buildDistributionInsights(activityLabels, activityValues, activityMaleValues, activityFemaleValues, 'economic activity');
+    const maritalInfoItems = buildDistributionInsights(maritalLabels, maritalValues, maritalMaleValues, maritalFemaleValues, 'marital status');
+
     const counterpartDisplayRows = counterpartMode === 'top'
         ? getTopN(counterpartRows, 5)
         : [...counterpartRows].slice(-5).reverse();
@@ -359,6 +438,28 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                 </div>
             </section>
 
+            <div className="section-tabs" role="tablist" aria-label="District dashboard sections">
+                {sectionTabs.map(function (tab) {
+                    const isActive = activeTab === tab.key;
+                    return (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className={`section-tab ${isActive ? 'is-active' : ''}`}
+                            onClick={() => {
+                                setActiveTab(tab.key);
+                                setOpenInfoId(null);
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {activeTab === 'overview' ? (
             <section className="card counterpart-card">
                 <div className="counterpart-head">
                     <div>
@@ -433,7 +534,9 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                     </div>
                 </div>
             </section>
+            ) : null}
 
+            {activeTab === 'overview' ? (
             <section className="profile-grid two-up">
                 <div className="card compact-card">
                     <h3 className="card-title">Male / Female</h3>
@@ -463,9 +566,13 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                     </div>
                 </div>
             </section>
+            ) : null}
 
+            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
             <section className="charts-grid">
-                <div className="card compact-card duration-card">
+                {activeTab === 'drivers' ? (
+                <div className="card compact-card duration-card card-with-info">
+                    <ChartInfoPopover infoId="district-duration" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={durationInfoItems} />
                     <h3 className="card-title">Duration of Stay</h3>
                     <SourceTag tableName="D02 District" />
                     <div className="flip-box social-flip-box">
@@ -530,8 +637,11 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         </button>
                     </div>
                 </div>
+                ) : null}
 
-                <div className="card compact-card">
+                {activeTab === 'demographics' ? (
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="district-education-levels" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
                     <h3 className="card-title">Education Levels</h3>
                     <SourceTag tableName="D04 District" />
                     <div className="flip-box social-flip-box">
@@ -599,10 +709,15 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         </button>
                     </div>
                 </div>
+                ) : null}
             </section>
+            ) : null}
 
+            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
             <section className="three-chart-row">
-                <div className="card compact-card">
+                {activeTab === 'drivers' ? (
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="district-migration-reason" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={reasonInfoItems} />
                     <h3 className="card-title">Reason for Migration</h3>
                     <SourceTag tableName="D03 District" />
                     <div className="flip-box social-flip-box">
@@ -650,8 +765,11 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         </button>
                     </div>
                 </div>
+                ) : null}
 
-                <div className="card compact-card">
+                {activeTab === 'drivers' ? (
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="district-economic-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />
                     <h3 className="card-title">Economic Activity</h3>
                     <SourceTag tableName="D06 District" />
                     <div className="flip-box social-flip-box">
@@ -715,7 +833,9 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         </button>
                     </div>
                 </div>
+                ) : null}
 
+                {activeTab === 'demographics' ? (
                 <div className="card compact-card">
                     <h3 className="card-title">Literate / Illiterate</h3>
                     <SourceTag tableName="D04 District" />
@@ -735,7 +855,77 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         <p className="no-data">No district education data found for this selection.</p>
                     )}
                 </div>
+                ) : null}
+
+                {activeTab === 'demographics' ? (
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="district-marital-status" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={maritalInfoItems} />
+                    <h3 className="card-title">Marital Status</h3>
+                    <SourceTag tableName="D10 District" />
+                    <div className="flip-box social-flip-box">
+                        <div className={`flip-inner ${maritalFlipped ? 'flipped' : ''}`}>
+                            <div className="side">
+                                <div className="chart-box social-chart">
+                                    {hasMaritalData ? (
+                                        <Bar
+                                            data={{
+                                                labels: maritalLabels,
+                                                datasets: [{
+                                                    label: 'Persons',
+                                                    data: maritalValues,
+                                                    backgroundColor: '#8b5cf6',
+                                                    borderRadius: 8,
+                                                    maxBarThickness: 54
+                                                }]
+                                            }}
+                                            options={{
+                                                responsive: true,
+                                                maintainAspectRatio: false,
+                                                plugins: { legend: { display: false } },
+                                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                                animation: false
+                                            }}
+                                        />
+                                    ) : (
+                                        <p className="no-data">No district marital-status data found for this selection.</p>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="side back-side">
+                                <div className="chart-box social-chart">
+                                    {hasMaritalData ? (
+                                        <Bar
+                                            data={{
+                                                labels: maritalLabels,
+                                                datasets: [
+                                                    { label: 'Male', data: maritalMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
+                                                    { label: 'Female', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
+                                                ]
+                                            }}
+                                            options={buildHorizontalStackedOptions()}
+                                        />
+                                    ) : (
+                                        <p className="no-data">No district marital-status data found for this selection.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="footer">
+                        <span>{hasMaritalData ? `Total records: ${maritalTotal.toLocaleString()}` : 'No marital-status totals for this district'}</span>
+                        <button
+                            type="button"
+                            className="link-btn"
+                            onClick={() => setMaritalFlipped(function (value) { return !value; })}
+                            disabled={!hasMaritalData}
+                        >
+                            {maritalFlipped ? 'Show main chart' : 'Show gender split'}
+                        </button>
+                    </div>
+                </div>
+                ) : null}
             </section>
+            ) : null}
             </div>
         </div>
     );

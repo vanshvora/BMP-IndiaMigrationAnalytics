@@ -15,6 +15,7 @@ D02_DIR = ROOT / "D-02-ALL"
 D03_DIR = ROOT / "D-03-ALL"
 D04_DIR = ROOT / "D-04-ALL"
 D06_DIR = ROOT / "D-06-ALL"
+D10_DIR = ROOT / "D-10_ALL"
 
 OUT_D02_CLEAN = ROOT / "district_duration_residence_flows.csv"
 OUT_D02_PUBLIC = ROOT.parent / "react-app" / "public" / "district_duration_residence_flows.csv"
@@ -24,6 +25,8 @@ OUT_D04_CLEAN = ROOT / "district_education_levels.csv"
 OUT_D04_PUBLIC = ROOT.parent / "react-app" / "public" / "district_education_levels.csv"
 OUT_D06_CLEAN = ROOT / "district_economic_activity.csv"
 OUT_D06_PUBLIC = ROOT.parent / "react-app" / "public" / "district_economic_activity.csv"
+OUT_D10_CLEAN = ROOT / "district_marital_status.csv"
+OUT_D10_PUBLIC = ROOT.parent / "react-app" / "public" / "district_marital_status.csv"
 
 STATE_NAMES = {
     "JAMMU & KASHMIR",
@@ -183,6 +186,30 @@ D06_HEADERS = [
     "NonWorkersSeeking_Persons",
     "NonWorkersSeeking_Males",
     "NonWorkersSeeking_Females",
+]
+
+D10_HEADERS = [
+    "state",
+    "district",
+    "districtCode",
+    "NeverMarried_Persons",
+    "NeverMarried_Males",
+    "NeverMarried_Females",
+    "CurrMarried_Persons",
+    "CurrMarried_Males",
+    "CurrMarried_Females",
+    "Widowed_Persons",
+    "Widowed_Males",
+    "Widowed_Females",
+    "Separated_Persons",
+    "Separated_Males",
+    "Separated_Females",
+    "Divorced_Persons",
+    "Divorced_Males",
+    "Divorced_Females",
+    "Unspecified_Persons",
+    "Unspecified_Males",
+    "Unspecified_Females",
 ]
 
 
@@ -608,6 +635,72 @@ def extract_d06_rows() -> list[dict[str, str | int]]:
     return output
 
 
+def extract_d10_rows() -> list[dict[str, str | int]]:
+    by_district: dict[tuple[str, str, int], dict[str, str | int]] = {}
+
+    for workbook in sorted(D10_DIR.glob("*.XLSX")):
+        workbook_state = ""
+
+        for row in iter_sheet_rows(workbook, "D-10"):
+            area_name = str(row.get(3, "")).strip()
+            if not workbook_state and looks_like_state_area_name(area_name):
+                workbook_state = normalize_name(area_name)
+
+            district_code = to_int(row.get(2))
+            if district_code == 0:
+                continue
+
+            if not area_name or looks_like_state_area_name(area_name):
+                continue
+
+            if normalize_flag(row.get(4, "")) != "TOTAL":
+                continue
+            if normalize_flag(row.get(5, "")) != "ALL AGES":
+                continue
+            if normalize_flag(row.get(6, "")) != "TOTAL":
+                continue
+
+            display_state = (
+                "TELANGANA"
+                if area_name.upper() in TELANGANA_DISTRICTS
+                else workbook_state
+            )
+            if display_state not in STATE_NAMES:
+                continue
+
+            key = (display_state, area_name, district_code)
+            if key in by_district:
+                continue
+
+            by_district[key] = {
+                "state": display_state,
+                "district": area_name,
+                "districtCode": district_code,
+                "NeverMarried_Persons": to_int(row.get(10)),
+                "NeverMarried_Males": to_int(row.get(11)),
+                "NeverMarried_Females": to_int(row.get(12)),
+                "CurrMarried_Persons": to_int(row.get(13)),
+                "CurrMarried_Males": to_int(row.get(14)),
+                "CurrMarried_Females": to_int(row.get(15)),
+                "Widowed_Persons": to_int(row.get(16)),
+                "Widowed_Males": to_int(row.get(17)),
+                "Widowed_Females": to_int(row.get(18)),
+                "Separated_Persons": to_int(row.get(19)),
+                "Separated_Males": to_int(row.get(20)),
+                "Separated_Females": to_int(row.get(21)),
+                "Divorced_Persons": to_int(row.get(22)),
+                "Divorced_Males": to_int(row.get(23)),
+                "Divorced_Females": to_int(row.get(24)),
+                "Unspecified_Persons": to_int(row.get(25)),
+                "Unspecified_Males": to_int(row.get(26)),
+                "Unspecified_Females": to_int(row.get(27)),
+            }
+
+    output = list(by_district.values())
+    output.sort(key=lambda item: (item["state"], item["district"]))
+    return output
+
+
 def write_csv(path: Path, rows: list[dict[str, str | int]], headers: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fp:
@@ -629,6 +722,7 @@ def main() -> None:
     d03_rows = extract_d03_rows()
     d04_rows = extract_d04_rows()
     d06_rows = extract_d06_rows()
+    d10_rows = extract_d10_rows()
 
     write_results = [
         safe_write_csv(OUT_D02_CLEAN, d02_rows, D02_HEADERS),
@@ -639,12 +733,15 @@ def main() -> None:
         safe_write_csv(OUT_D04_PUBLIC, d04_rows, D04_HEADERS),
         safe_write_csv(OUT_D06_CLEAN, d06_rows, D06_HEADERS),
         safe_write_csv(OUT_D06_PUBLIC, d06_rows, D06_HEADERS),
+        safe_write_csv(OUT_D10_CLEAN, d10_rows, D10_HEADERS),
+        safe_write_csv(OUT_D10_PUBLIC, d10_rows, D10_HEADERS),
     ]
 
     unique_d02_districts = {(row["state"], row["district"]) for row in d02_rows}
     unique_d03_districts = {(row["state"], row["district"]) for row in d03_rows}
     unique_d04_districts = {(row["state"], row["district"]) for row in d04_rows}
     unique_d06_districts = {(row["state"], row["district"]) for row in d06_rows}
+    unique_d10_districts = {(row["state"], row["district"]) for row in d10_rows}
     print(f"D02 rows: {len(d02_rows):,}")
     print(f"D02 states: {len({row['state'] for row in d02_rows}):,}")
     print(f"D02 districts: {len(unique_d02_districts):,}")
@@ -657,6 +754,9 @@ def main() -> None:
     print(f"D06 rows: {len(d06_rows):,}")
     print(f"D06 states: {len({row['state'] for row in d06_rows}):,}")
     print(f"D06 districts: {len(unique_d06_districts):,}")
+    print(f"D10 rows: {len(d10_rows):,}")
+    print(f"D10 states: {len({row['state'] for row in d10_rows}):,}")
+    print(f"D10 districts: {len(unique_d10_districts):,}")
     for _, message in write_results:
         print(message)
 
