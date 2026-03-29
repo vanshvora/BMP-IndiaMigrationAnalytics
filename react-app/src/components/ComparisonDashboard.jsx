@@ -5,6 +5,7 @@ import Papa from 'papaparse';
 import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
 import { chartValueLabelPlugin } from '../utils/chartLabels';
 import { loadCsv } from '../utils/loadCsv';
+import { buildComparisonInsights, ChartInfoPopover, sumNumericValues } from './chartInfoUtils';
 import { formatPercent, getShare, getTopN } from './dashboardInsights';
 import ComparisonHeader from './ComparisonHeader';
 import './DataSection.css';
@@ -50,12 +51,6 @@ const stackedBarOptions = {
     },
     animation: false
 };
-
-function sum(values) {
-    let total = 0;
-    for (let i = 0; i < values.length; i++) total += Number(values[i]) || 0;
-    return total;
-}
 
 function sumColumns(row, keys) {
     let total = 0;
@@ -118,6 +113,7 @@ function ComparisonInsightCard({ title, accentClass, lead, items }) {
 }
 
 export default function ComparisonDashboard({ flows, flowType, threshold, stateA, stateB }) {
+    const [openInfoId, setOpenInfoId] = useState(null);
     const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
     const [d12Data, setD12Data] = useState([]);
@@ -183,11 +179,11 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             relevantFlows.push(row);
         }
 
-        const totalFlow = sum(relevantFlows.map(function (row) { return row.count; }));
-        const totalMale = sum(relevantFlows.map(function (row) { return row.male; }));
-        const totalFemale = sum(relevantFlows.map(function (row) { return row.female; }));
-        const totalUrban = sum(relevantFlows.map(function (row) { return row.urban; }));
-        const totalRural = sum(relevantFlows.map(function (row) { return row.rural; }));
+        const totalFlow = sumNumericValues(relevantFlows.map(function (row) { return row.count; }));
+        const totalMale = sumNumericValues(relevantFlows.map(function (row) { return row.male; }));
+        const totalFemale = sumNumericValues(relevantFlows.map(function (row) { return row.female; }));
+        const totalUrban = sumNumericValues(relevantFlows.map(function (row) { return row.urban; }));
+        const totalRural = sumNumericValues(relevantFlows.map(function (row) { return row.rural; }));
         const femaleShare = getShare(totalFemale, totalFlow);
         const urbanShare = getShare(totalUrban, totalUrban + totalRural);
 
@@ -211,7 +207,7 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             }
             return total;
         });
-        const reasonTotal = sum(reasonTotals);
+        const reasonTotal = sumNumericValues(reasonTotals);
         const reasonRows = REASON_LABELS.map(function (label, i) {
             return { label: label, value: reasonTotals[i] };
         });
@@ -294,8 +290,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
     const stateBTopCounterpart = stateBMetrics.counterpartRows[0] || null;
     const stateALeadingReason = getTopN(stateAMetrics.reasonRows, 1)[0] || null;
     const stateBLeadingReason = getTopN(stateBMetrics.reasonRows, 1)[0] || null;
-    const stateAReasonTotal = sum(stateAMetrics.reasonRows.map(function (row) { return row.value; }));
-    const stateBReasonTotal = sum(stateBMetrics.reasonRows.map(function (row) { return row.value; }));
+    const stateAReasonTotal = sumNumericValues(stateAMetrics.reasonRows.map(function (row) { return row.value; }));
+    const stateBReasonTotal = sumNumericValues(stateBMetrics.reasonRows.map(function (row) { return row.value; }));
     const flowLeader = stateAMetrics.totalFlow >= stateBMetrics.totalFlow ? stateA : stateB;
     const flowLeaderValue = stateAMetrics.totalFlow >= stateBMetrics.totalFlow ? stateAMetrics.totalFlow : stateBMetrics.totalFlow;
     const flowGap = Math.abs(stateAMetrics.totalFlow - stateBMetrics.totalFlow);
@@ -305,6 +301,12 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
     const urbanLeaderValue = stateAMetrics.urbanShare >= stateBMetrics.urbanShare ? stateAMetrics.urbanShare : stateBMetrics.urbanShare;
     const femaleLeader = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateA : stateB;
     const femaleLeaderValue = stateAMetrics.femaleShare >= stateBMetrics.femaleShare ? stateAMetrics.femaleShare : stateBMetrics.femaleShare;
+    const ageInfoItems = buildComparisonInsights(AGE_LABELS, stateAMetrics.ageTotals, stateBMetrics.ageTotals, 'age', stateA, stateB);
+    const durationInfoItems = buildComparisonInsights(stateAMetrics.durationLabels, stateAMetrics.durationTotals, stateBMetrics.durationTotals, 'duration', stateA, stateB);
+    const educationInfoItems = buildComparisonInsights(EDUCATION_LABELS, stateAMetrics.educationValues, stateBMetrics.educationValues, 'education', stateA, stateB);
+    const activityInfoItems = buildComparisonInsights(ACTIVITY_LABELS, stateAMetrics.activityValues, stateBMetrics.activityValues, 'economic activity', stateA, stateB);
+    const reasonInfoItems = buildComparisonInsights(REASON_LABELS, stateAMetrics.reasonRows.map(function (row) { return row.value; }), stateBMetrics.reasonRows.map(function (row) { return row.value; }), 'migration reason', stateA, stateB);
+    const maritalInfoItems = buildComparisonInsights(MARITAL_LABELS, stateAMetrics.maritalValues, stateBMetrics.maritalValues, 'marital status', stateA, stateB);
 
     return (
         <div className="wrapper comparison-dashboard">
@@ -439,7 +441,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
 
             <section className="comparison-section">
                 <div className="comparison-grid comparison-grid-2">
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-age" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={ageInfoItems} />
                         <h3 className="card-title">Age Distribution</h3>
                         <div className="chart-box">
                             <Bar
@@ -455,7 +458,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                         </div>
                     </div>
 
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-duration" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={durationInfoItems} />
                         <h3 className="card-title">Duration of Stay</h3>
                         <div className="chart-box">
                             <Bar
@@ -475,7 +479,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
 
             <section className="comparison-section">
                 <div className="comparison-grid comparison-grid-3 comparison-grid-insight">
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-education" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
                         <h3 className="card-title">Education Levels</h3>
                         <div className="chart-box">
                             <Bar
@@ -515,7 +520,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                         ]}
                     />
 
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />
                         <h3 className="card-title">Economic Activity Profile</h3>
                         <div className="chart-box">
                             <Bar
@@ -548,7 +554,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             <section className="comparison-section">
                 <div className="comparison-grid comparison-grid-2">
 
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-reason" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={reasonInfoItems} />
                         <h3 className="card-title">Reasons for Migration</h3>
                         <div className="chart-box">
                             <Bar
@@ -576,7 +583,8 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                         </div>
                     </div>
 
-                    <div className="card">
+                    <div className="card card-with-info">
+                        <ChartInfoPopover infoId="compare-marital" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={maritalInfoItems} />
                         <h3 className="card-title">Marital Status Profile</h3>
                         <div className="chart-box">
                             <Bar

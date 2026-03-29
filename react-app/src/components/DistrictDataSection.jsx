@@ -386,6 +386,21 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                 </div>
 
                 <div className="counterpart-layout">
+                    <div className="counterpart-list">
+                        {counterpartRows.map(function (row, index) {
+                            return (
+                                <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={row.name}>
+                                    <span className="list-rank">{index + 1}</span>
+                                    <div className="list-copy">
+                                        <span className="list-name">{row.name}</span>
+                                        <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
+                                    </div>
+                                    <strong className="list-value">{row.value.toLocaleString()}</strong>
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     <div className="counterpart-main-column">
                         <div className="chart-box counterpart-chart">
                             {counterpartDisplayRows.length > 0 ? (
@@ -415,21 +430,6 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                                 <p className="no-data">No origin-state corridors meet the current threshold.</p>
                             )}
                         </div>
-                    </div>
-
-                    <div className="counterpart-list">
-                        {counterpartRows.map(function (row, index) {
-                            return (
-                                <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={row.name}>
-                                    <span className="list-rank">{index + 1}</span>
-                                    <div className="list-copy">
-                                        <span className="list-name">{row.name}</span>
-                                        <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
-                                    </div>
-                                    <strong className="list-value">{row.value.toLocaleString()}</strong>
-                                </div>
-                            );
-                        })}
                     </div>
                 </div>
             </section>

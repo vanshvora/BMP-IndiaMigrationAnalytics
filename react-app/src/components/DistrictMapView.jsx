@@ -28,7 +28,76 @@ function getStateName(feature) {
     return rawState;
 }
 
+function getRingCentroid(ring) {
+    if (!Array.isArray(ring) || ring.length < 3) return null;
+
+    let area = 0;
+    let centroidLng = 0;
+    let centroidLat = 0;
+
+    for (let i = 0; i < ring.length - 1; i++) {
+        const current = ring[i];
+        const next = ring[i + 1];
+        if (!current || !next) continue;
+
+        const currentLng = Number(current[0]);
+        const currentLat = Number(current[1]);
+        const nextLng = Number(next[0]);
+        const nextLat = Number(next[1]);
+        const cross = (currentLng * nextLat) - (nextLng * currentLat);
+
+        area += cross;
+        centroidLng += (currentLng + nextLng) * cross;
+        centroidLat += (currentLat + nextLat) * cross;
+    }
+
+    if (Math.abs(area) < 1e-9) return null;
+
+    return {
+        area: area / 2,
+        lng: centroidLng / (3 * area),
+        lat: centroidLat / (3 * area)
+    };
+}
+
+function getGeometryCentroid(geometry) {
+    if (!geometry?.type || !geometry?.coordinates) return null;
+
+    if (geometry.type === 'Polygon') {
+        return getRingCentroid(geometry.coordinates[0]);
+    }
+
+    if (geometry.type === 'MultiPolygon') {
+        let weightedLat = 0;
+        let weightedLng = 0;
+        let totalArea = 0;
+
+        for (let i = 0; i < geometry.coordinates.length; i++) {
+            const polygon = geometry.coordinates[i];
+            const centroid = getRingCentroid(polygon?.[0]);
+            if (!centroid) continue;
+
+            const weight = Math.abs(centroid.area);
+            weightedLat += centroid.lat * weight;
+            weightedLng += centroid.lng * weight;
+            totalArea += weight;
+        }
+
+        if (totalArea > 0) {
+            return {
+                lat: weightedLat / totalArea,
+                lng: weightedLng / totalArea
+            };
+        }
+    }
+
+    return null;
+}
+
 function getFeatureCenter(feature) {
+    const geometryCenter = getGeometryCentroid(feature?.geometry);
+    if (geometryCenter) return geometryCenter;
+
     const layer = L.geoJSON(feature);
     return layer.getBounds().getCenter();
 }
@@ -139,12 +208,13 @@ function IndiaStateGeoJSON({ geoData, selectedState, onStateClick }) {
     function getStateStyle(feature) {
         const stateName = normalizeName(feature.properties.NAME_1);
         const isSelected = stateName === selectedState;
+        const hasActiveSelection = Boolean(selectedState);
 
         return {
             color: isSelected ? '#0f766e' : '#6b7280',
             weight: isSelected ? 3 : 1,
             fillColor: isSelected ? 'rgba(20, 184, 166, 0.24)' : '#ffffff',
-            fillOpacity: isSelected ? 0.42 : 0.1
+            fillOpacity: isSelected ? 0.42 : (hasActiveSelection ? 0.04 : 0.1)
         };
     }
 

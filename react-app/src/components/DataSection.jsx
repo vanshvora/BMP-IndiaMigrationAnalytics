@@ -6,18 +6,13 @@ import { normalizeName, INDIAN_STATES_NORM } from '../utils/coordinates';
 import { chartValueLabelPlugin } from '../utils/chartLabels';
 import { loadCsv } from '../utils/loadCsv';
 import { BreakdownPie } from './dashboardWidgets';
+import { buildDistributionInsights, ChartInfoPopover, sumNumericValues } from './chartInfoUtils';
 import { formatPercent, getShare, getTopN } from './dashboardInsights';
 import './DataSection.css';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, chartValueLabelPlugin);
 ChartJS.defaults.datasets.bar.categoryPercentage = 1.0;
 ChartJS.defaults.datasets.bar.barPercentage = 1.0;
-
-function sumValues(values) {
-    let total = 0;
-    for (let i = 0; i < values.length; i++) total += Number(values[i]) || 0;
-    return total;
-}
 
 function buildHorizontalStackedOptions() {
     return {
@@ -34,11 +29,11 @@ function buildHorizontalStackedOptions() {
     };
 }
 
-function SummaryStatCard({ title, value, detail }) {
+function SummaryStatCard({ title, value, detail, valueClassName = '' }) {
     return (
         <div className="card summary-card">
             <p className="summary-label">{title}</p>
-            <p className="summary-value">{value}</p>
+            <p className={`summary-value ${valueClassName}`.trim()}>{value}</p>
             <p className="summary-detail">{detail}</p>
         </div>
     );
@@ -81,10 +76,15 @@ function FlipChartCard({
     onToggle,
     footerNote,
     frontLabel,
-    backLabel
+    backLabel,
+    infoId,
+    infoItems,
+    openInfoId,
+    setOpenInfoId
 }) {
     return (
-        <div className="card feature-card">
+        <div className="card feature-card card-with-info">
+            <ChartInfoPopover infoId={infoId} openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={infoItems} />
             <h3 className="card-title">{title}</h3>
             <SourceTag tableName={tableName} />
             <div className="flip-box">
@@ -116,6 +116,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const [activityFlipped, setActivityFlipped] = useState(false);
     const [maritalFlipped, setMaritalFlipped] = useState(false);
     const [counterpartMode, setCounterpartMode] = useState('top');
+    const [openInfoId, setOpenInfoId] = useState(null);
 
     const [d02Data, setD02Data] = useState([]);
     const [d03Data, setD03Data] = useState([]);
@@ -205,11 +206,11 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         return total;
     }
 
-    const totalFlow = sumValues(relevantFlows.map(function (row) { return row.count; }));
-    const totalMale = sumValues(relevantFlows.map(function (row) { return row.male; }));
-    const totalFemale = sumValues(relevantFlows.map(function (row) { return row.female; }));
-    const totalUrban = sumValues(relevantFlows.map(function (row) { return row.urban; }));
-    const totalRural = sumValues(relevantFlows.map(function (row) { return row.rural; }));
+    const totalFlow = sumNumericValues(relevantFlows.map(function (row) { return row.count; }));
+    const totalMale = sumNumericValues(relevantFlows.map(function (row) { return row.male; }));
+    const totalFemale = sumNumericValues(relevantFlows.map(function (row) { return row.female; }));
+    const totalUrban = sumNumericValues(relevantFlows.map(function (row) { return row.urban; }));
+    const totalRural = sumNumericValues(relevantFlows.map(function (row) { return row.rural; }));
 
     const topCounterpart = counterpartRows[0] || null;
 
@@ -238,7 +239,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
         }
         return total;
     });
-    const durationTotal = sumValues(durationTotals);
+    const durationTotal = sumNumericValues(durationTotals);
 
     const reasonLabels = ['Work', 'Business', 'Education', 'Marriage', 'Post-birth', 'With household', 'Other'];
     const reasonPersonKeys = ['Persons_Work', 'Persons_Business', 'Persons_Education', 'Persons_Marriage', 'Persons_MoveAfterBirth', 'Persons_MoveWithHH', 'Persons_Other'];
@@ -268,7 +269,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const reasonRows = reasonLabels.map(function (label, index) {
         return { label: label, value: reasonTotals[index] };
     });
-    const reasonTotal = sumValues(reasonTotals);
+    const reasonTotal = sumNumericValues(reasonTotals);
     const leadingReason = getTopN(reasonRows, 1)[0] || null;
 
     const ageLabels = ['Children', 'Youth', 'Working Age', 'Elderly', 'Not stated'];
@@ -311,7 +312,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const ageRows = ageLabels.map(function (label, index) {
         return { label: label, value: ageTotals[index] };
     });
-    const ageTotal = sumValues(ageTotals);
+    const ageTotal = sumNumericValues(ageTotals);
     const leadingAge = getTopN(ageRows, 1)[0] || null;
 
     const educationRow = d04Data.find(function (row) { return row.AreaName === selectedState; }) || {};
@@ -400,6 +401,12 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
     const urbanShare = formatPercent(getShare(totalUrban, totalUrban + totalRural));
     const literacyShare = formatPercent(getShare(literatePersons, literatePersons + illiteratePersons));
     const durationShare = formatPercent(getShare(leadingDuration?.value || 0, durationTotal));
+    const durationInfoItems = buildDistributionInsights(durationLabels, durationTotals, durationMaleTotals, durationFemaleTotals, 'duration');
+    const ageInfoItems = buildDistributionInsights(ageLabels, ageTotals, ageMaleTotals, ageFemaleTotals, 'age');
+    const reasonInfoItems = buildDistributionInsights(reasonLabels, reasonTotals, reasonMaleTotals, reasonFemaleTotals, 'migration reason');
+    const educationInfoItems = buildDistributionInsights(educationLabels, educationValues, educationMaleValues, educationFemaleValues, 'education');
+    const activityInfoItems = buildDistributionInsights(activityLabels, activityValues, activityMaleValues, activityFemaleValues, 'economic activity');
+    const maritalInfoItems = buildDistributionInsights(maritalLabels, maritalValues, maritalMaleValues, maritalFemaleValues, 'marital status');
 
     const counterpartTitle = flowType === 'inflow' ? 'Origins' : 'Destinations';
 
@@ -431,18 +438,14 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                     <h2 className="state-name">{selectedState}</h2>
                     <p className="subtitle">Domestic {flowType === 'inflow' ? 'In-Migration' : 'Out-Migration'} - Census 2011</p>
                 </div>
-
-                <div className="total-box">
-                    <span className="total-tag">Total {flowType === 'inflow' ? 'Inflow' : 'Outflow'}</span>
-                    <div className="total-num">{totalFlow.toLocaleString()}</div>
-                </div>
             </div>
 
             <section className="summary-grid">
                 <SummaryStatCard
-                    title="Top counterpart"
-                    value={topCounterpart ? topCounterpart.name : 'No data'}
-                    detail={topCounterpart ? `${topCounterpart.value.toLocaleString()} migrants` : 'No flows above threshold'}
+                    title={`Total ${flowType === 'inflow' ? 'Inflow' : 'Outflow'}`}
+                    value={totalFlow.toLocaleString()}
+                    detail={relevantFlows.length ? `${relevantFlows.length.toLocaleString()} corridors above threshold` : 'No flows above threshold'}
+                    valueClassName="summary-value--accent"
                 />
                 <SummaryStatCard
                     title="Leading reason"
@@ -488,6 +491,21 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                 </div>
 
                 <div className="counterpart-layout">
+                    <div className="counterpart-list">
+                        {counterpartRows.map(function (row, index) {
+                            return (
+                                <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={`full-${row.name}`}>
+                                    <span className="list-rank">{index + 1}</span>
+                                    <div className="list-copy">
+                                        <span className="list-name">{row.name}</span>
+                                        <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
+                                    </div>
+                                    <strong className="list-value">{row.value.toLocaleString()}</strong>
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     <div className="counterpart-main-column">
                         <div className="chart-box counterpart-chart">
                             {counterpartDisplayRows.length > 0 ? (
@@ -517,21 +535,6 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                                 <p className="no-data">No counterpart data available.</p>
                             )}
                         </div>
-                    </div>
-
-                    <div className="counterpart-list">
-                        {counterpartRows.map(function (row, index) {
-                            return (
-                                <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={`full-${row.name}`}>
-                                    <span className="list-rank">{index + 1}</span>
-                                    <div className="list-copy">
-                                        <span className="list-name">{row.name}</span>
-                                        <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
-                                    </div>
-                                    <strong className="list-value">{row.value.toLocaleString()}</strong>
-                                </div>
-                            );
-                        })}
                     </div>
                 </div>
             </section>
@@ -581,7 +584,8 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             </section>
 
             <section className="charts-grid">
-                <div className="card compact-card">
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="duration" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={durationInfoItems} />
                     <h3 className="card-title">Duration of Stay</h3>
                     <SourceTag tableName="D02" />
                     <div className="flip-box social-flip-box">
@@ -683,6 +687,10 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </div>
                     )}
                     footerNote={`Total age records: ${ageTotal.toLocaleString()}`}
+                    infoId="age-profile"
+                    infoItems={ageInfoItems}
+                    openInfoId={openInfoId}
+                    setOpenInfoId={setOpenInfoId}
                 />
 
                 <FlipChartCard
@@ -714,11 +722,16 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </div>
                     )}
                     footerNote={`Total reason records: ${reasonTotal.toLocaleString()}`}
+                    infoId="migration-reason"
+                    infoItems={reasonInfoItems}
+                    openInfoId={openInfoId}
+                    setOpenInfoId={setOpenInfoId}
                 />
             </section>
 
             <section className="three-chart-row">
-                <div className="card compact-card">
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="education-levels" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
                     <h3 className="card-title">Education Levels</h3>
                     <SourceTag tableName="D04" />
                     <div className="flip-box social-flip-box">
@@ -769,14 +782,15 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </div>
                     </div>
                     <div className="footer">
-                        <span>Total: {sumValues(educationValues).toLocaleString()}</span>
+                        <span>Total: {sumNumericValues(educationValues).toLocaleString()}</span>
                         <button type="button" className="link-btn" onClick={() => setEducationFlipped(function (value) { return !value; })}>
                             {educationFlipped ? 'Show main chart' : 'Show gender split'}
                         </button>
                     </div>
                 </div>
 
-                <div className="card compact-card">
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="economic-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />
                     <h3 className="card-title">Economic Activity</h3>
                     <SourceTag tableName="D06" />
                     <div className="flip-box social-flip-box">
@@ -827,14 +841,15 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </div>
                     </div>
                     <div className="footer">
-                        <span>Total: {sumValues(activityValues).toLocaleString()}</span>
+                        <span>Total: {sumNumericValues(activityValues).toLocaleString()}</span>
                         <button type="button" className="link-btn" onClick={() => setActivityFlipped(function (value) { return !value; })}>
                             {activityFlipped ? 'Show main chart' : 'Show gender split'}
                         </button>
                     </div>
                 </div>
 
-                <div className="card compact-card">
+                <div className="card compact-card card-with-info">
+                    <ChartInfoPopover infoId="marital-status" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={maritalInfoItems} />
                     <h3 className="card-title">Marital Status</h3>
                     <SourceTag tableName="D10" />
                     <div className="flip-box social-flip-box">
@@ -885,7 +900,7 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         </div>
                     </div>
                     <div className="footer">
-                        <span>Total: {sumValues(maritalValues).toLocaleString()}</span>
+                        <span>Total: {sumNumericValues(maritalValues).toLocaleString()}</span>
                         <button type="button" className="link-btn" onClick={() => setMaritalFlipped(function (value) { return !value; })}>
                             {maritalFlipped ? 'Show main chart' : 'Show gender split'}
                         </button>

@@ -16,6 +16,7 @@ export default function DistrictMapPopup({ selectedState, selectedDistrict }) {
     useEffect(() => {
         setStatus('loading');
         setCandidateIndex(0);
+        setExpanded(false);
     }, [selectedState, selectedDistrict]);
 
     function handleError() {
@@ -35,17 +36,28 @@ export default function DistrictMapPopup({ selectedState, selectedDistrict }) {
         }
 
         setVisible(false);
+        setExpanded(false);
     }, [shouldRender]);
 
     if (!shouldRender) return null;
 
+    const canExpand = Boolean(src) && status === 'ready';
+
     return (
-        <div className={`state-map-popup district-map-popup ${visible ? 'state-map-popup--visible' : ''}`}>
+        <div className={`state-map-popup district-map-popup ${visible ? 'state-map-popup--visible' : ''} ${expanded ? 'state-map-popup--expanded' : ''}`}>
             <div className="smp-inner">
-                <div className={`smp-card ${expanded ? 'smp-card--expanded' : ''}`}>
+                <div className="smp-card">
                     <p className="smp-label">{selectedDistrict}</p>
                     <p className="dmp-sublabel">{selectedState}</p>
-                    <div className="smp-img-wrap">
+                    <button
+                        type="button"
+                        className={`smp-img-wrap smp-img-button ${canExpand ? 'smp-img-button--interactive' : ''}`}
+                        onClick={() => {
+                            if (canExpand) setExpanded(true);
+                        }}
+                        disabled={!canExpand}
+                        aria-label={`Expand map of ${selectedDistrict}`}
+                    >
                         {status === 'loading' && (
                             <div className="smp-placeholder">
                                 <span className="smp-spinner" />
@@ -66,15 +78,40 @@ export default function DistrictMapPopup({ selectedState, selectedDistrict }) {
                                 onError={handleError}
                             />
                         )}
-                    </div>
-                <button
-                        className="smp-expand-btn"
-                        onClick={() => setExpanded(!expanded)}
-                        >
-                        <i className={`pi ${expanded ? 'pi-arrow-up-right' : 'pi-arrow-down-left'}`} />
-                </button>
+                    </button>
                 </div>
             </div>
+
+            {expanded ? (
+                <div
+                    className="smp-expanded-overlay"
+                    onClick={() => setExpanded(false)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
+                            setExpanded(false);
+                        }
+                    }}
+                    aria-label={`Close expanded map of ${selectedDistrict}`}
+                >
+                    <div className="smp-expanded-panel" onClick={(event) => event.stopPropagation()}>
+                        <button
+                            type="button"
+                            className="smp-close-btn"
+                            onClick={() => setExpanded(false)}
+                            aria-label={`Close expanded map of ${selectedDistrict}`}
+                        >
+                            <i className="pi pi-times" aria-hidden="true" />
+                        </button>
+                        <p className="smp-label">{selectedDistrict}</p>
+                        <p className="dmp-sublabel">{selectedState}</p>
+                        <div className="smp-expanded-image-wrap">
+                            <img src={src} alt={`Map of ${selectedDistrict}`} className="smp-expanded-img" />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
