@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import './StateMapPopup.css';
 import './DistrictMapPopup.css';
 import { getDistrictMapCandidates } from '../utils/mapFilenames';
+import { lockPageScroll } from './mapPopupScrollLock';
 
 export default function DistrictMapPopup({ selectedState, selectedDistrict }) {
     const [status, setStatus] = useState('loading');
@@ -38,6 +39,11 @@ export default function DistrictMapPopup({ selectedState, selectedDistrict }) {
         setVisible(false);
         setExpanded(false);
     }, [shouldRender]);
+
+    useEffect(() => {
+        if (!expanded) return undefined;
+        return lockPageScroll();
+    }, [expanded]);
 
     if (!shouldRender) return null;
 

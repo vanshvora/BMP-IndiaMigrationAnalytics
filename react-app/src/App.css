@@ -185,7 +185,7 @@
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 1000;
+  z-index: 900;
   display: flex;
   gap: 8px;
 }
@@ -238,7 +238,7 @@
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
-  z-index: 10020;
+  z-index: 800;
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
