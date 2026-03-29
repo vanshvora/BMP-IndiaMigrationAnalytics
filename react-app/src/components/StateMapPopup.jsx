@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import './StateMapPopup.css';
 import { getStateMapCandidates } from '../utils/mapFilenames';
+import { lockPageScroll } from './mapPopupScrollLock';
 
 function SingleMapCard({ stateName, label, onExpand }) {
     const [status, setStatus] = useState('loading');
@@ -82,6 +83,11 @@ export default function StateMapPopup({ selectedState, compareMode, stateA, stat
     useEffect(() => {
         setExpandedMap(null);
     }, [selectedState, compareMode, stateA, stateB]);
+
+    useEffect(() => {
+        if (!expandedMap) return undefined;
+        return lockPageScroll();
+    }, [expandedMap]);
 
     if (!shouldRender) return null;
 
