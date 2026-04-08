@@ -1,0 +1,149 @@
+.info-page {
+  background: #f3f6fb;
+  min-height: calc(100vh - 64px);
+  padding: 16px;
+  color: #0f172a;
+}
+
+.info-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+
+.info-hero,
+.info-card {
+  background: #ffffff;
+  border: 1px solid #d8e2ee;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.info-hero h1 {
+  margin: 0;
+  font-family: "Merriweather", Georgia, serif;
+  font-size: 30px;
+}
+
+.info-hero p {
+  margin: 10px 0 0;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.info-section-title {
+  margin: 0;
+  font-size: 20px;
+  font-family: "Merriweather", Georgia, serif;
+}
+
+.info-subtitle {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.info-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.info-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #c6d7ea;
+  background: #edf5ff;
+  color: #0f4c81;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: #334155;
+  line-height: 1.8;
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.info-table th,
+.info-table td {
+  border: 1px solid #d7e2ef;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.info-table th {
+  background: #eef4fc;
+  color: #0f3761;
+}
+
+.faq-item {
+  border: 1px solid #d9e2ed;
+  border-radius: 10px;
+  background: #fcfdff;
+  padding: 10px 12px;
+}
+
+.faq-item summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #0f3761;
+}
+
+.faq-item p {
+  margin: 8px 0 0;
+  color: #475569;
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.info-metric-card {
+  border: 1px solid #d9e3f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f9fbff;
+}
+
+.info-metric-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.info-metric-card p {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 920px) {
+  .info-grid-2,
+  .info-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .info-hero h1 {
+    font-size: 25px;
+  }
+}
+

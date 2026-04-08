@@ -46,7 +46,7 @@ function processData(rawData) {
     return csvData;
 }
 
-export default function StateDashboardPage() {
+export default function StateDashboardPage({ initialCompareMode = false }) {
     const [flows, setFlows] = useState([]);
     const [flowType, setFlowType] = useState('inflow');
     const [selectedState, setSelectedState] = useState(null);
@@ -56,7 +56,7 @@ export default function StateDashboardPage() {
     const [mapAction, setMapAction] = useState(null);
     const [topFlowLimit, setTopFlowLimit] = useState('10');
     const [highlightTopCorridors, setHighlightTopCorridors] = useState(false);
-    const [compareMode, setCompareMode] = useState(false);
+    const [compareMode, setCompareMode] = useState(Boolean(initialCompareMode));
     const [stateA, setStateA] = useState(null);
     const [stateB, setStateB] = useState(null);
 

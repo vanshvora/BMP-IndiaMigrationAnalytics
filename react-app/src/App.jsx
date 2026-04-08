@@ -1,24 +1,39 @@
 import { useEffect, useState } from 'react';
 import StateDashboardPage from './components/StateDashboardPage';
 import DistrictDashboardPage from './components/DistrictDashboardPage';
+import AIChatPage from './components/AIChatPage';
+import HomePage from './components/HomePage';
+import MethodologyPage from './components/MethodologyPage';
+import FAQPage from './components/FAQPage';
+import AboutPage from './components/AboutPage';
 import './App.css';
 
-const PAGES = {
-    state: {
-        id: 'state',
-        label: 'State Flows',
-        description: 'National state-to-state migration corridors',
-    },
-    district: {
-        id: 'district',
-        label: 'District Flows',
-        description: 'Origin-state to district inflow corridors',
-    },
-};
+const TOP_NAV_LINKS = [
+    { id: 'home', label: 'Home', description: 'Portal overview and guided onboarding' },
+    { id: 'ai', label: 'AI Chat', description: 'Conversational migration insights assistant' },
+    { id: 'methodology', label: 'Methodology', description: 'Data and analytical methods' },
+    { id: 'faq', label: 'FAQ', description: 'Common portal questions' },
+    { id: 'about', label: 'About', description: 'About the migration analytics initiative' },
+];
+
+const EXPLORE_LINKS = [
+    { id: 'state', label: 'State Explorer', description: 'State-level inflow and outflow corridors' },
+    { id: 'district', label: 'District Explorer', description: 'District-level corridor analysis' },
+    { id: 'compare', label: 'Compare States', description: 'Two-state comparative analytics view' },
+];
+
+const MAP_PAGES = new Set(['state', 'district', 'compare']);
 
 function getPageFromHash() {
     const hash = window.location.hash.replace('#', '').trim().toLowerCase();
-    return hash === 'district' ? 'district' : 'state';
+    if (hash === 'state') return 'state';
+    if (hash === 'district') return 'district';
+    if (hash === 'compare') return 'compare';
+    if (hash === 'ai') return 'ai';
+    if (hash === 'methodology') return 'methodology';
+    if (hash === 'faq') return 'faq';
+    if (hash === 'about') return 'about';
+    return 'home';
 }
 
 export default function App() {
@@ -51,6 +66,11 @@ export default function App() {
 
     useEffect(() => {
         function updateJumpButton() {
+            if (!MAP_PAGES.has(currentPage)) {
+                setShowJumpButton(false);
+                return;
+            }
+
             const mapSection = document.querySelector('.content .map-section');
             if (!mapSection || !selectionActive) {
                 setShowJumpButton(false);
@@ -87,8 +107,13 @@ export default function App() {
     }, [currentPage, selectionActive]);
 
     function navigate(pageId) {
-        window.location.hash = pageId;
+        window.location.assign(`${window.location.pathname}${window.location.search}#${pageId}`);
         setCurrentPage(pageId);
+        const openDropdowns = document.querySelectorAll('details.portal-dropdown[open]');
+        for (let i = 0; i < openDropdowns.length; i++) {
+            openDropdowns[i].removeAttribute('open');
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function handleJumpButtonClick() {
@@ -105,32 +130,65 @@ export default function App() {
 
     return (
         <div className="app">
-            <header className="navbar">
-                <div className="navbar-brand">
-                    <h1 className="logo">India Migration Analytics</h1>
-                    <span className="badge">Census 2011 D-Series</span>
-                </div>
+            <header className={`portal-navbar ${MAP_PAGES.has(currentPage) ? 'portal-navbar-explore' : ''}`}>
+                <div className="portal-navbar-inner">
+                    <div className="portal-brand">
+                        <h1>India Migration Analytics</h1>
+                        <span>Institutional Migration Intelligence Portal</span>
+                    </div>
 
-                <nav className="navbar-tabs" aria-label="Dashboard pages">
-                    {Object.values(PAGES).map(function (page) {
-                        const isActive = currentPage === page.id;
-                        return (
-                            <button
-                                key={page.id}
-                                type="button"
-                                className={`navbar-tab ${isActive ? 'is-active' : ''}`}
-                                onClick={() => navigate(page.id)}
-                                aria-current={isActive ? 'page' : undefined}
-                                title={page.description}
-                            >
-                                {page.label}
-                            </button>
-                        );
-                    })}
-                </nav>
+                    <nav className="portal-links" aria-label="Portal navigation">
+                        {TOP_NAV_LINKS.map(function (page) {
+                            const isActive = currentPage === page.id;
+                            return (
+                                <button
+                                    key={page.id}
+                                    type="button"
+                                    className={`portal-link ${isActive ? 'active' : ''}`}
+                                    onClick={() => navigate(page.id)}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    title={page.description}
+                                >
+                                    {page.label}
+                                </button>
+                            );
+                        })}
+
+                        <details className="portal-dropdown">
+                            <summary className={`portal-link ${MAP_PAGES.has(currentPage) ? 'active' : ''}`}>Explore</summary>
+                            <div className="portal-dropdown-menu">
+                                {EXPLORE_LINKS.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className={`portal-dropdown-item ${currentPage === item.id ? 'active' : ''}`}
+                                        onClick={() => navigate(item.id)}
+                                        title={item.description}
+                                    >
+                                        <strong>{item.label}</strong>
+                                        <span>{item.description}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </details>
+                    </nav>
+
+                    {!MAP_PAGES.has(currentPage) ? (
+                        <button type="button" className="portal-cta" onClick={() => navigate('state')}>
+                            Start Exploring
+                        </button>
+                    ) : null}
+                </div>
             </header>
 
-            {currentPage === 'district' ? <DistrictDashboardPage /> : <StateDashboardPage />}
+            {currentPage === 'home' ? <HomePage onNavigate={navigate} /> : null}
+            {currentPage === 'state' ? <StateDashboardPage /> : null}
+            {currentPage === 'compare' ? <StateDashboardPage key="compare-view" initialCompareMode /> : null}
+            {currentPage === 'district' ? <DistrictDashboardPage /> : null}
+            {currentPage === 'ai' ? <AIChatPage /> : null}
+            {currentPage === 'methodology' ? <MethodologyPage /> : null}
+            {currentPage === 'faq' ? <FAQPage /> : null}
+            {currentPage === 'about' ? <AboutPage /> : null}
 
             {showJumpButton ? (
                 <button
