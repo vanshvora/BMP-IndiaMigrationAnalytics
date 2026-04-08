@@ -1,0 +1,7 @@
+backend/
+data-cleaning/
+.git/
+.github/
+node_modules/
+**/.venv/
+**/__pycache__/
