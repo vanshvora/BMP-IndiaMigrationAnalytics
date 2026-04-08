@@ -138,21 +138,16 @@ export default function App() {
                     </div>
 
                     <nav className="portal-links" aria-label="Portal navigation">
-                        {TOP_NAV_LINKS.map(function (page) {
-                            const isActive = currentPage === page.id;
-                            return (
-                                <button
-                                    key={page.id}
-                                    type="button"
-                                    className={`portal-link ${isActive ? 'active' : ''}`}
-                                    onClick={() => navigate(page.id)}
-                                    aria-current={isActive ? 'page' : undefined}
-                                    title={page.description}
-                                >
-                                    {page.label}
-                                </button>
-                            );
-                        })}
+                        <button
+                            key={TOP_NAV_LINKS[0].id}
+                            type="button"
+                            className={`portal-link ${currentPage === TOP_NAV_LINKS[0].id ? 'active' : ''}`}
+                            onClick={() => navigate(TOP_NAV_LINKS[0].id)}
+                            aria-current={currentPage === TOP_NAV_LINKS[0].id ? 'page' : undefined}
+                            title={TOP_NAV_LINKS[0].description}
+                        >
+                            {TOP_NAV_LINKS[0].label}
+                        </button>
 
                         <details className="portal-dropdown">
                             <summary className={`portal-link ${MAP_PAGES.has(currentPage) ? 'active' : ''}`}>Explore</summary>
@@ -171,6 +166,22 @@ export default function App() {
                                 ))}
                             </div>
                         </details>
+
+                        {TOP_NAV_LINKS.slice(1).map(function (page) {
+                            const isActive = currentPage === page.id;
+                            return (
+                                <button
+                                    key={page.id}
+                                    type="button"
+                                    className={`portal-link ${isActive ? 'active' : ''}`}
+                                    onClick={() => navigate(page.id)}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    title={page.description}
+                                >
+                                    {page.label}
+                                </button>
+                            );
+                        })}
                     </nav>
 
                     {!MAP_PAGES.has(currentPage) ? (

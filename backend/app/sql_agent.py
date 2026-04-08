@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import re
@@ -111,22 +112,155 @@ def _extract_top_n(question: str, default: int = 5, max_value: int = 25) -> int:
     return min(value, max_value)
 
 
+def _extract_location_after_keyword(question: str, keyword: str) -> str:
+    match = re.search(rf"\b{keyword}\s+([a-z][a-z\s&-]+)", question.lower())
+    if not match:
+        return ""
+    location = match.group(1).strip()
+    location = re.split(r"\b(?:from|to|into|by|for|with|in percentage|percentage|share|split)\b", location)[0].strip()
+    return _normalize_text(location)
+
+
+def _resolve_normalized_location(raw_location: str, candidates: list[str]) -> str:
+    if not raw_location:
+        return ""
+
+    normalized_candidates = {_normalize_text(candidate): candidate for candidate in candidates}
+    if raw_location in normalized_candidates:
+        return raw_location
+
+    match = difflib.get_close_matches(raw_location, list(normalized_candidates.keys()), n=1, cutoff=0.78)
+    return match[0] if match else raw_location
+
+
+def _canonicalize_question(question: str) -> str:
+    canonical = question.strip().lower()
+
+    replacements = [
+        (r"\bwhich states have the highest in[- ]migration corridors\b", "top destination states by total migrants"),
+        (r"\bwhich states have the highest out[- ]migration corridors\b", "top origin states by total migrants"),
+        (r"\bwhich states receive the most migrants\b", "top destination states by total migrants"),
+        (r"\bwhich states attract the most migrants\b", "top destination states by total migrants"),
+        (r"\bwhich states send the most migrants\b", "top origin states by total migrants"),
+        (r"\bhow many people migrated from ([a-z][a-z\s&-]+)\b", r"total migrants from \1"),
+        (r"\bhow many migrated from ([a-z][a-z\s&-]+)\b", r"total migrants from \1"),
+        (r"\bhow many people migrated to ([a-z][a-z\s&-]+)\b", r"total migrants to \1"),
+        (r"\bhow many migrated to ([a-z][a-z\s&-]+)\b", r"total migrants to \1"),
+        (r"\bmale vs female\b", "gender split"),
+        (r"\brural vs urban\b", "rural urban split"),
+        (r"\brural versus urban\b", "rural urban split"),
+        (r"\bin migration\b", "in-migration"),
+        (r"\bout migration\b", "out-migration"),
+    ]
+
+    for pattern, replacement in replacements:
+        canonical = re.sub(pattern, replacement, canonical)
+
+    return canonical
+
+
 def _is_quota_error(exc: Exception) -> bool:
     text = str(exc).lower()
     return "quota" in text or "rate limit" in text or "429" in text
 
 
-def _rule_based_sql(question: str, context: ChatContext | None) -> tuple[str, str] | None:
-    lowered = question.lower()
+def _smalltalk_response(question: str) -> str | None:
+    lowered = question.strip().lower()
+    compact = re.sub(r"[^a-z]+", "", lowered)
+    greetings = {"hi", "hello", "hey", "hii", "hola", "namaste"}
+    help_prompts = {"help", "start", "menu"}
+    how_are_you_prompts = {"how are you", "how are u", "how r you", "hi how are you", "hello how are you"}
+
+    if compact in greetings:
+        return (
+            "Hello! Ask me about state-wise or district-wise migration data, and I can return exact numbers, "
+            "rankings, and short insights."
+        )
+
+    if lowered in how_are_you_prompts:
+        return (
+            "I am doing well and ready to help. Ask me about migration by state or district, gender split, "
+            "rural versus urban share, migration reasons, or totals."
+        )
+
+    if compact in help_prompts or lowered in {"what can you do", "what can you do?", "help me"}:
+        return (
+            "I can help with migration questions like top destination states, top origin regions for a district, "
+            "gender split, rural versus urban share, migration reasons, and methodology/source explanations."
+        )
+
+    return None
+
+
+def _needs_rephrase_response(question: str) -> str | None:
+    text = question.strip()
+    compact = re.sub(r"[^a-z0-9]+", "", text.lower())
+    alpha_only = re.sub(r"[^a-z]+", "", text.lower())
+    lowered = text.lower()
+
+    casual_markers = {
+        "whatever",
+        "okay",
+        "ok",
+        "okk",
+        "hmm",
+        "hmmm",
+        "lol",
+        "fine",
+        "nice",
+        "cool",
+        "bro",
+        "huh",
+        "alright",
+    }
+
+    if len(compact) < 2:
+        return "I am here when you're ready. You can ask me about migration by state, district, gender split, reasons, or totals."
+
+    if compact in casual_markers or lowered in casual_markers:
+        return (
+            "No problem. I am here whenever you want to explore the data. You can ask about top migration corridors, "
+            "gender split, rural versus urban share, migration reasons, or district-level trends."
+        )
+
+    if alpha_only and len(set(alpha_only)) <= 3 and len(alpha_only) >= 12:
+        return (
+            "That does not look like a migration question yet, but I am here to help when you're ready. You can ask something like "
+            "'Which states have the highest in-migration corridors?' or 'Give male vs female share in percentage terms.'"
+        )
+
+    if not re.search(r"[aeiou]", alpha_only) and len(alpha_only) >= 8:
+        return (
+            "I am not sure what you meant there, but I can help with migration questions in plain language about states, districts, "
+            "gender split, migration reasons, or totals."
+        )
+
+    return None
+
+
+def _rule_based_sql(question: str, context: ChatContext | None, state_names: list[str] | None = None) -> tuple[str, str] | None:
+    lowered = _canonicalize_question(question)
     top_n = _extract_top_n(lowered)
     selected_state = _normalize_text(context.selected_state if context else None)
     selected_district = _normalize_text(context.selected_district if context else None)
+    candidates = state_names or []
+    state_from_question = _resolve_normalized_location(_extract_location_after_keyword(question, "from"), candidates)
+    destination_from_question = _resolve_normalized_location(_extract_location_after_keyword(question, "to"), candidates)
 
     asks_gender = "male" in lowered or "female" in lowered or "gender" in lowered
     asks_rural_urban = "rural" in lowered or "urban" in lowered
     asks_top = "top" in lowered or "highest" in lowered or "largest" in lowered
+    asks_in_migration = "in-migration" in lowered or "in migration" in lowered or "destination" in lowered
+    asks_out_migration = "out-migration" in lowered or "out migration" in lowered
+    asks_total_migrants = (
+        "how many" in lowered
+        or "total" in lowered
+        or "migrated" in lowered
+        or "moved" in lowered
+        or "migrants" in lowered
+    )
 
-    if asks_top and "destination" in lowered and "state" in lowered:
+    if asks_top and asks_in_migration and ("state" in lowered or "corridor" in lowered):
         return (
             (
                 "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
@@ -138,7 +272,68 @@ def _rule_based_sql(question: str, context: ChatContext | None) -> tuple[str, st
             "Rule-based planner: top destination states by D01 totals.",
         )
 
-    if asks_top and "origin" in lowered and "state" in lowered:
+    if asks_top and (("origin" in lowered and "state" in lowered) or (asks_out_migration and ("state" in lowered or "corridor" in lowered))):
+        return (
+            (
+                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "GROUP BY BirthPlace "
+                "ORDER BY total_migrants DESC "
+                f"LIMIT {top_n}"
+            ),
+            "Rule-based planner: top origin states by D01 totals.",
+        )
+
+    origin_state = state_from_question or selected_state
+    destination_state = destination_from_question or selected_state
+
+    if origin_state and destination_state and asks_total_migrants:
+        return (
+            (
+                "SELECT BirthPlace AS origin_state, AreaName AS destination_state, "
+                "SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE BirthPlace_norm = '{origin_state}' AND AreaName_norm = '{destination_state}' "
+                "GROUP BY BirthPlace, AreaName"
+            ).format(origin_state=origin_state, destination_state=destination_state),
+            "Rule-based planner: total migrants between specified origin and destination states.",
+        )
+
+    if origin_state and asks_total_migrants and ("from" in lowered or "out" in lowered):
+        return (
+            (
+                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE BirthPlace_norm = '{state_norm}' "
+                "GROUP BY BirthPlace"
+            ).format(state_norm=origin_state),
+            "Rule-based planner: total migrants from selected origin state.",
+        )
+
+    if destination_state and asks_total_migrants and ("to" in lowered or "into" in lowered):
+        return (
+            (
+                "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE AreaName_norm = '{state_norm}' "
+                "GROUP BY AreaName"
+            ).format(state_norm=destination_state),
+            "Rule-based planner: total migrants to selected destination state.",
+        )
+
+    if asks_top and ("origin region" in lowered or "origin regions" in lowered or "origin" in lowered):
+        if selected_district:
+            return (
+                (
+                    "SELECT origin, SUM(count) AS total_migrants "
+                    "FROM district_interstate_flows "
+                    "WHERE district_norm = '{district_norm}' "
+                    "GROUP BY origin "
+                    "ORDER BY total_migrants DESC "
+                    "LIMIT {top_n}"
+                ).format(district_norm=selected_district, top_n=top_n),
+                "Rule-based planner: top origins for selected district.",
+            )
         return (
             (
                 "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
@@ -289,28 +484,50 @@ def _deterministic_rag_answer(question: str, docs: list[dict[str, str]]) -> str:
 
 def _deterministic_sql_answer(rows: list[dict]) -> str:
     if not rows:
-        return "No rows were found for this question and current filters."
+        return "No data found for this question and current filters."
 
     first = rows[0]
     keys = set(first.keys())
+
+    if {"origin_state", "destination_state", "total_migrants"} <= keys:
+        return (
+            f"Based on the available data, about {int(first['total_migrants']):,} people moved from "
+            f"{first['origin_state']} to {first['destination_state']}."
+        )
+
+    if {"origin_state", "total_migrants"} <= keys:
+        return (
+            f"Based on the available data, about {int(first['total_migrants']):,} people migrated from "
+            f"{first['origin_state']}."
+        )
+
+    if {"destination_state", "total_migrants"} <= keys and len(rows) == 1:
+        return (
+            f"Based on the available data, about {int(first['total_migrants']):,} people migrated to "
+            f"{first['destination_state']}."
+        )
 
     if {"destination_state", "total_migrants"} <= keys:
         top_items = ", ".join(
             [f"{row['destination_state']} ({int(row['total_migrants']):,})" for row in rows[:5]]
         )
-        return f"Top destination states by migrants: {top_items}."
+        return f"The top destination states by migrants are: {top_items}."
 
     if {"origin", "total_migrants"} <= keys:
         top_items = ", ".join([f"{row['origin']} ({int(row['total_migrants']):,})" for row in rows[:5]])
-        return f"Top origins by migrants: {top_items}."
+        return f"The top origin regions by migrants are: {top_items}."
+
+    if {"origin_state", "total_migrants"} <= keys:
+        top_items = ", ".join([f"{row['origin_state']} ({int(row['total_migrants']):,})" for row in rows[:5]])
+        return f"The top origin states by migrants are: {top_items}."
 
     if {"origin", "female_migrants"} <= keys:
         top_items = ", ".join([f"{row['origin']} ({int(row['female_migrants']):,})" for row in rows[:5]])
-        return f"Top origins by female migrants: {top_items}."
+        return f"The top origin regions by female migrants are: {top_items}."
 
     if {"origin", "male_migrants"} <= keys:
         top_items = ", ".join([f"{row['origin']} ({int(row['male_migrants']):,})" for row in rows[:5]])
-        return f"Top origins by male migrants: {top_items}."
+        return f"The top origin regions by male migrants are: {top_items}."
 
     if {"male_total", "female_total", "total_migrants"} <= keys:
         male = float(first["male_total"] or 0)
@@ -320,10 +537,10 @@ def _deterministic_sql_answer(rows: list[dict]) -> str:
             male_pct = male * 100.0 / total
             female_pct = female * 100.0 / total
             return (
-                f"Gender split: Male {int(male):,} ({male_pct:.1f}%), "
-                f"Female {int(female):,} ({female_pct:.1f}%), Total {int(total):,}."
+                f"The gender split is {male_pct:.1f}% male ({int(male):,}) and "
+                f"{female_pct:.1f}% female ({int(female):,}), out of {int(total):,} total migrants."
             )
-        return f"Gender totals: Male {int(male):,}, Female {int(female):,}, Total {int(total):,}."
+        return f"The totals are {int(male):,} male migrants and {int(female):,} female migrants."
 
     if {"rural_total", "urban_total", "total_migrants"} <= keys:
         rural = float(first["rural_total"] or 0)
@@ -333,16 +550,32 @@ def _deterministic_sql_answer(rows: list[dict]) -> str:
             rural_pct = rural * 100.0 / total
             urban_pct = urban * 100.0 / total
             return (
-                f"Rural/Urban split: Rural {int(rural):,} ({rural_pct:.1f}%), "
-                f"Urban {int(urban):,} ({urban_pct:.1f}%), Total {int(total):,}."
+                f"The rural-urban split is {rural_pct:.1f}% rural ({int(rural):,}) and "
+                f"{urban_pct:.1f}% urban ({int(urban):,}), out of {int(total):,} total migrants."
             )
-        return f"Rural {int(rural):,}, Urban {int(urban):,}, Total {int(total):,}."
+        return f"The totals are {int(rural):,} rural migrants and {int(urban):,} urban migrants."
 
     if len(rows) == 1:
-        parts = [f"{k}={v}" for k, v in first.items()]
-        return "Result: " + ", ".join(parts)
+        parts = [f"{k.replace('_', ' ')}: {v}" for k, v in first.items()]
+        return "I found one matching result. " + ", ".join(parts) + "."
 
-    return f"Computed {len(rows)} row(s). Open data preview for detailed values."
+    return f"I found {len(rows)} matching results. Please check the table below for the details."
+
+
+def _looks_like_raw_technical_answer(answer: str) -> bool:
+    lowered = answer.lower()
+    suspicious_markers = [
+        "```",
+        "select ",
+        "from state_d01_flows",
+        "from district_interstate_flows",
+        '"male_percentage"',
+        '"female_percentage"',
+        "sql used",
+        "result:",
+        "[{",
+    ]
+    return any(marker in lowered for marker in suspicious_markers)
 
 
 class ChatOrchestrator:
@@ -411,7 +644,7 @@ class ChatOrchestrator:
         return str(content)
 
     def _route_question(self, question: str) -> str:
-        lowered = question.lower()
+        lowered = _canonicalize_question(question)
         conceptual_tokens = {
             "what is",
             "define",
@@ -435,6 +668,15 @@ class ChatOrchestrator:
             "percentage",
             "male",
             "female",
+            "rural",
+            "urban",
+            "migration split",
+            "split",
+            "migrated",
+            "destination",
+            "origin",
+            "receive the most migrants",
+            "send the most migrants",
             "district",
             "state",
         }
@@ -450,13 +692,14 @@ class ChatOrchestrator:
 
     def _follow_ups(self, context_state: str | None, context_district: str | None) -> list[str]:
         prompts = [
-            "Show the top 5 origin regions for this selection.",
+            "Show the top 5 origin states by total migrants.",
             "Give male vs female share in percentage terms.",
             "Explain one key insight and one caveat from this data.",
         ]
         if context_state:
             prompts.insert(0, f"Compare {context_state} with national average.")
         if context_district:
+            prompts[0] = f"Show the top 5 origin regions for {context_district}."
             prompts.insert(0, f"Show the top migration reasons for {context_district}.")
         return prompts[:4]
 
@@ -470,8 +713,31 @@ class ChatOrchestrator:
             self._cache_set(cache_key, response)
             return response
 
+        smalltalk = _smalltalk_response(request.message)
+        if smalltalk:
+            return finalize(ChatResponse(
+                answer=smalltalk,
+                route="smalltalk",
+                follow_ups=self._follow_ups(
+                    request.context.selected_state if request.context else None,
+                    request.context.selected_district if request.context else None,
+                ),
+            ))
+
+        rephrase = _needs_rephrase_response(request.message)
+        if rephrase:
+            return finalize(ChatResponse(
+                answer=rephrase,
+                route="clarify",
+                follow_ups=self._follow_ups(
+                    request.context.selected_state if request.context else None,
+                    request.context.selected_district if request.context else None,
+                ),
+            ))
+
+        route = self._route_question(request.message)
         faq_hit = match_faq(request.message)
-        if faq_hit and faq_hit["score"] >= 0.62:
+        if route == "rag" and faq_hit and faq_hit["score"] >= 0.62:
             item = faq_hit["item"]
             return finalize(ChatResponse(
                 answer=item["answer"],
@@ -482,8 +748,6 @@ class ChatOrchestrator:
                     request.context.selected_district if request.context else None,
                 ),
             ))
-
-        route = self._route_question(request.message)
 
         if route == "rag":
             docs = self.retriever.retrieve(request.message, top_k=4)
@@ -518,15 +782,18 @@ class ChatOrchestrator:
         schema = self.db.schema_summary()
         allowed_tables = set(self.db.list_tables())
         limited_history = request.history[-self.settings.max_history_turns :]
+        state_names = self.db.context_options().get("states", [])
+        canonical_question = _canonicalize_question(request.message)
         sql_prompt = build_sql_prompt(
             schema_summary=schema,
             question=request.message,
+            canonical_question=canonical_question,
             context=request.context,
             history=limited_history,
             allowed_tables=sorted(allowed_tables),
         )
 
-        rule_plan = _rule_based_sql(request.message, request.context)
+        rule_plan = _rule_based_sql(request.message, request.context, state_names)
 
         try:
             if rule_plan:
@@ -581,8 +848,8 @@ class ChatOrchestrator:
 
             return finalize(ChatResponse(
                 answer=(
-                    "I could not build a safe SQL query for that request. "
-                    "Try rephrasing with explicit state/district and metric."
+                    "Please ask migration-related questions only. You can ask about states, districts, gender split, "
+                    "rural versus urban share, migration reasons, or totals."
                 ),
                 route="sql",
                 citations=[],
@@ -591,6 +858,19 @@ class ChatOrchestrator:
             ))
 
         preview = rows[: self.settings.max_rows_preview]
+        if not preview:
+            return finalize(ChatResponse(
+                answer=_deterministic_sql_answer(preview),
+                route=route,
+                sql=validated_sql,
+                citations=[Citation(label=f"table:{table}") for table in used_tables],
+                data_preview=[],
+                follow_ups=self._follow_ups(
+                    request.context.selected_state if request.context else None,
+                    request.context.selected_district if request.context else None,
+                ),
+            ))
+
         answer_prompt = build_sql_answer_prompt(
             question=request.message,
             context=request.context,
@@ -605,10 +885,16 @@ class ChatOrchestrator:
         else:
             extra_citations = []
 
-        try:
-            answer = self._invoke_llm(answer_prompt).strip()
-        except Exception:
-            answer = _deterministic_sql_answer(preview)
+        deterministic_answer = _deterministic_sql_answer(preview)
+        if route == "hybrid":
+            try:
+                answer = self._invoke_llm(answer_prompt).strip()
+                if _looks_like_raw_technical_answer(answer):
+                    answer = deterministic_answer
+            except Exception:
+                answer = deterministic_answer
+        else:
+            answer = deterministic_answer
 
         citations = [Citation(label=f"table:{table}") for table in used_tables] + extra_citations
         if rule_plan:

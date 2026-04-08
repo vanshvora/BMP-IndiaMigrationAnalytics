@@ -36,6 +36,33 @@ FEW_SHOT_SQL_EXAMPLES = [
             "GROUP BY state"
         ),
     },
+    {
+        "question": "Which states receive the most migrants?",
+        "sql": (
+            "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
+            "FROM state_d01_flows "
+            "GROUP BY AreaName "
+            "ORDER BY total_migrants DESC "
+            "LIMIT 5"
+        ),
+    },
+    {
+        "question": "How many people migrated from Gujarat?",
+        "sql": (
+            "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
+            "FROM state_d01_flows "
+            "WHERE BirthPlace_norm = 'gujarat' "
+            "GROUP BY BirthPlace"
+        ),
+    },
+    {
+        "question": "What is the national rural vs urban migration split?",
+        "sql": (
+            "SELECT SUM(Rural_Persons) AS rural_total, SUM(Urban_Persons) AS urban_total, "
+            "SUM(Total_Persons) AS total_migrants "
+            "FROM state_d01_flows"
+        ),
+    },
 ]
 
 
@@ -59,6 +86,7 @@ def build_sql_prompt(
     *,
     schema_summary: str,
     question: str,
+    canonical_question: str,
     context: ChatContext | None,
     history: list[ChatTurn],
     allowed_tables: list[str],
@@ -93,6 +121,9 @@ Active dashboard context:
 User question:
 {question}
 
+Canonical interpretation:
+{canonical_question}
+
 Output JSON schema:
 {{
   "sql": "SELECT ...",
@@ -113,6 +144,9 @@ You are an analytics assistant for India Migration data.
 Use only the SQL result rows below and do not invent values.
 If rows are empty, say that no rows were found for the current filters.
 Keep answer concise and insight-oriented.
+Do NOT show SQL, code blocks, JSON, lists of raw rows, or headings like "SQL used" or "Result".
+Answer for a non-technical end user in plain English.
+If percentages are relevant, state them directly in one or two sentences.
 
 Question:
 {question}

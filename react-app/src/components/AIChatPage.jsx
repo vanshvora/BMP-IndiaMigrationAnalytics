@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './AIChatPage.css';
 
 const API_BASE = import.meta.env.VITE_AI_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -12,10 +12,25 @@ function makeMessage(role, content, meta) {
     };
 }
 
+function formatColumnLabel(key) {
+    return String(key)
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatCellValue(value, key) {
+    if (value === null || value === undefined || value === '') return '-';
+    if (typeof value === 'number') {
+        if (/percentage|percent|share/i.test(key)) return `${value.toFixed(2)}%`;
+        if (Math.abs(value) >= 1000) return value.toLocaleString('en-IN');
+        return Number.isInteger(value) ? String(value) : value.toFixed(2);
+    }
+    return String(value);
+}
+
 export default function AIChatPage() {
     const [inputValue, setInputValue] = useState('');
     const [loading, setLoading] = useState(false);
-    const [faqItems, setFaqItems] = useState([]);
     const [messages, setMessages] = useState([
         makeMessage(
             'assistant',
@@ -27,19 +42,40 @@ export default function AIChatPage() {
     const [selectedState, setSelectedState] = useState('');
     const [selectedDistrict, setSelectedDistrict] = useState('');
     const [threshold, setThreshold] = useState('');
-    const [backendHealth, setBackendHealth] = useState(null);
     const [requestError, setRequestError] = useState('');
+    const messagesEndRef = useRef(null);
+
+    const quickQuestions = useMemo(() => {
+        if (selectedDistrict) {
+            return [
+                `Show the top migration reasons for ${selectedDistrict}.`,
+                `Show the top 5 origin regions for ${selectedDistrict}.`,
+                `Give male vs female share in percentage terms.`,
+                `Show the rural vs urban split for ${selectedDistrict}.`,
+                `Summarize one key insight for ${selectedDistrict}.`,
+            ];
+        }
+
+        if (selectedState) {
+            return [
+                `Show the top 5 districts in ${selectedState} by total migrants.`,
+                `Compare ${selectedState} with national average.`,
+                `Give male vs female share in percentage terms.`,
+                `Show the rural vs urban split for ${selectedState}.`,
+                `What are the most important migration insights for ${selectedState}?`,
+            ];
+        }
+
+        return [
+            'Which states have the highest in-migration corridors?',
+            'Show the top 5 origin states by total migrants.',
+            'Give male vs female share in percentage terms.',
+            'What is the national rural vs urban migration split?',
+            'Which states have the highest out-migration corridors?',
+        ];
+    }, [selectedDistrict, selectedState]);
 
     useEffect(() => {
-        fetch(`${API_BASE}/api/faq`)
-            .then((res) => res.json())
-            .then((data) => {
-                if (Array.isArray(data)) setFaqItems(data);
-            })
-            .catch(() => {
-                setFaqItems([]);
-            });
-
         fetch(`${API_BASE}/api/context/options`)
             .then((res) => res.json())
             .then((data) => {
@@ -50,11 +86,6 @@ export default function AIChatPage() {
                 setStates([]);
                 setDistrictsByState({});
             });
-
-        fetch(`${API_BASE}/api/health`)
-            .then((res) => res.json())
-            .then((data) => setBackendHealth(data))
-            .catch(() => setBackendHealth(null));
     }, []);
 
     const districtOptions = useMemo(() => {
@@ -67,6 +98,10 @@ export default function AIChatPage() {
         if (districtOptions.includes(selectedDistrict)) return;
         setSelectedDistrict('');
     }, [districtOptions, selectedDistrict]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, [messages, loading]);
 
     function buildContext() {
         return {
@@ -136,19 +171,6 @@ export default function AIChatPage() {
         <div className="ai-page">
             <aside className="ai-side-panel">
                 <section className="ai-card">
-                    <h2 className="ai-card-title">Backend Status</h2>
-                    {backendHealth ? (
-                        <ul className="ai-health-list">
-                            <li>DB: {backendHealth.db_ready ? 'Ready' : 'Not Ready'}</li>
-                            <li>LLM: {backendHealth.llm_ready ? `Ready (${backendHealth.llm_provider})` : 'Not Ready'}</li>
-                            {backendHealth.llm_error ? <li className="ai-error-text">LLM Error: {backendHealth.llm_error}</li> : null}
-                        </ul>
-                    ) : (
-                        <p className="ai-muted">Backend health unavailable.</p>
-                    )}
-                </section>
-
-                <section className="ai-card">
                     <h2 className="ai-card-title">Context</h2>
                     <label className="ai-label">State</label>
                     <select
@@ -190,20 +212,21 @@ export default function AIChatPage() {
                         placeholder="e.g. 1000"
                         onChange={(event) => setThreshold(event.target.value)}
                     />
+
                 </section>
 
                 <section className="ai-card">
-                    <h2 className="ai-card-title">FAQs</h2>
-                    <div className="ai-faq-list">
-                        {faqItems.map((item) => (
+                    <h2 className="ai-card-title">Quick Questions</h2>
+                    <div className="ai-quick-list">
+                        {quickQuestions.map((prompt) => (
                             <button
-                                key={item.question}
+                                key={prompt}
                                 type="button"
-                                className="ai-faq-item"
-                                onClick={() => sendMessage(item.question)}
+                                className="ai-quick-btn"
+                                onClick={() => sendMessage(prompt)}
                                 disabled={loading}
                             >
-                                {item.question}
+                                {prompt}
                             </button>
                         ))}
                     </div>
@@ -222,52 +245,33 @@ export default function AIChatPage() {
                             <div className="ai-message-role">{message.role === 'assistant' ? 'AI' : 'You'}</div>
                             <p className="ai-message-content">{message.content}</p>
 
-                            {message.meta?.error ? (
-                                <p className="ai-inline-error">Details: {message.meta.error}</p>
-                            ) : null}
-
-                            {message.meta?.sql ? (
-                                <details className="ai-details">
-                                    <summary>SQL used</summary>
-                                    <pre>{message.meta.sql}</pre>
-                                </details>
-                            ) : null}
-
-                            {Array.isArray(message.meta?.citations) && message.meta.citations.length > 0 ? (
-                                <div className="ai-citations">
-                                    {message.meta.citations.map((citation, index) => (
-                                        <span key={`${citation.label}-${index}`} className="ai-citation-pill">
-                                            {citation.label}
-                                            {citation.detail ? `: ${citation.detail}` : ''}
-                                        </span>
-                                    ))}
-                                </div>
-                            ) : null}
-
-                            {Array.isArray(message.meta?.dataPreview) && message.meta.dataPreview.length > 0 ? (
-                                <details className="ai-details">
-                                    <summary>Data preview ({message.meta.dataPreview.length} row(s))</summary>
-                                    <pre>{JSON.stringify(message.meta.dataPreview, null, 2)}</pre>
-                                </details>
-                            ) : null}
-
-                            {Array.isArray(message.meta?.followUps) && message.meta.followUps.length > 0 ? (
-                                <div className="ai-follow-ups">
-                                    {message.meta.followUps.map((question) => (
-                                        <button
-                                            key={question}
-                                            type="button"
-                                            className="ai-follow-up-btn"
-                                            onClick={() => sendMessage(question)}
-                                            disabled={loading}
-                                        >
-                                            {question}
-                                        </button>
-                                    ))}
+                            {message.role === 'assistant' && Array.isArray(message.meta?.dataPreview) && message.meta.dataPreview.length >= 4 ? (
+                                <div className="ai-result-table-wrap">
+                                    <table className="ai-result-table">
+                                        <thead>
+                                            <tr>
+                                                {Object.keys(message.meta.dataPreview[0]).map((key) => (
+                                                    <th key={`${message.id}-head-${key}`}>{formatColumnLabel(key)}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {message.meta.dataPreview.map((row, rowIndex) => (
+                                                <tr key={`${message.id}-row-${rowIndex}`}>
+                                                    {Object.entries(row).map(([key, value]) => (
+                                                        <td key={`${message.id}-cell-${rowIndex}-${key}`}>
+                                                            {formatCellValue(value, key)}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             ) : null}
                         </article>
                     ))}
+                    <div ref={messagesEndRef} />
                 </div>
 
                 <div className="ai-composer">
