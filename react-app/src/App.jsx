@@ -130,7 +130,7 @@ export default function App() {
 
     return (
         <div className="app">
-            <header className="portal-navbar">
+            <header className={`portal-navbar ${MAP_PAGES.has(currentPage) ? 'portal-navbar-explore' : ''}`}>
                 <div className="portal-navbar-inner">
                     <div className="portal-brand">
                         <h1>India Migration Analytics</h1>
@@ -173,9 +173,11 @@ export default function App() {
                         </details>
                     </nav>
 
-                    <button type="button" className="portal-cta" onClick={() => navigate('state')}>
-                        Start Exploring
-                    </button>
+                    {!MAP_PAGES.has(currentPage) ? (
+                        <button type="button" className="portal-cta" onClick={() => navigate('state')}>
+                            Start Exploring
+                        </button>
+                    ) : null}
                 </div>
             </header>
 

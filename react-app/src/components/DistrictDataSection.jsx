@@ -8,6 +8,7 @@ import { buildDistributionInsights, ChartInfoPopover } from './chartInfoUtils';
 import { chartValueLabelPlugin } from '../utils/chartLabels';
 import { normalizeDistrictName, normalizeName } from '../utils/coordinates';
 import { loadCsv } from '../utils/loadCsv';
+import MigrationInsightCard from './MigrationInsightCard';
 import './DataSection.css';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, chartValueLabelPlugin);
@@ -37,15 +38,31 @@ function SourceTag({ tableName }) {
     return <p className="source-tag">Table: {tableName}</p>;
 }
 
+function ChartPair({ pairIndex, mainTitle, splitTitle, tableName, mainContent, splitContent, mainFooter, splitFooter, footerNote, infoId, infoItems, openInfoId, setOpenInfoId }) {
+    const reversed = pairIndex % 2 !== 0;
+    return (
+        <div className={`chart-pair-row ${reversed ? 'reversed' : ''}`}>
+            <div className="chart-pair-main card-with-info">
+                {infoId ? <ChartInfoPopover infoId={infoId} openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={infoItems} /> : null}
+                <h3 className="card-title">{mainTitle}</h3>
+                <SourceTag tableName={tableName} />
+                {mainContent}
+                <div className="chart-pair-footer">{mainFooter}</div>
+            </div>
+            <div className="chart-pair-split">
+                <h3 className="card-title">{splitTitle}</h3>
+                <SourceTag tableName={tableName} />
+                {splitContent}
+                <div className="chart-pair-footer">{splitFooter}</div>
+            </div>
+        </div>
+    );
+}
+
 export default function DistrictDataSection({ selectedState, selectedDistrict, districtFlows, threshold }) {
     const [activeTab, setActiveTab] = useState('overview');
     const [openInfoId, setOpenInfoId] = useState(null);
     const [counterpartMode, setCounterpartMode] = useState('top');
-    const [durationFlipped, setDurationFlipped] = useState(false);
-    const [educationFlipped, setEducationFlipped] = useState(false);
-    const [reasonFlipped, setReasonFlipped] = useState(false);
-    const [activityFlipped, setActivityFlipped] = useState(false);
-    const [maritalFlipped, setMaritalFlipped] = useState(false);
     const [districtD02Rows, setDistrictD02Rows] = useState([]);
     const [districtD03Rows, setDistrictD03Rows] = useState([]);
     const [districtD04Rows, setDistrictD04Rows] = useState([]);
@@ -246,6 +263,7 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
         return total;
     });
     const durationTotal = sumValues(durationTotals);
+    const hasDurationData = durationTotal > 0;
 
     const matchingDistrictD04Row = useMemo(function () {
         if (!selectedState || !selectedDistrict) return null;
@@ -283,7 +301,6 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
         Number(educationRow.Graduate_Females) || 0,
         Number(educationRow.TechDegree_Females) || 0
     ];
-    const hasDurationData = durationTotal > 0;
     const educationTotal = sumValues(educationValues);
     const hasEducationData = educationTotal > 0 || literatePersons > 0 || illiteratePersons > 0;
 
@@ -400,6 +417,21 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
     const counterpartDisplayRows = counterpartMode === 'top'
         ? getTopN(counterpartRows, 5)
         : [...counterpartRows].slice(-5).reverse();
+
+    const topCounterpart = counterpartRows.length > 0 ? counterpartRows[0] : null;
+    const femaleShare = formatPercent(getShare(totalFemale, totalFlow));
+    const urbanShare = formatPercent(getShare(totalUrban, totalUrban + totalRural));
+    const literacyShare = formatPercent(getShare(literatePersons, literatePersons + illiteratePersons));
+
+    const leadingReason = getTopN(reasonLabels.map(function (label, index) { return { label: label, value: reasonTotals[index] }; }), 1)[0] || null;
+    const topReasonShare = formatPercent(getShare(leadingReason?.value || 0, reasonTotal));
+
+    const leadingDuration = getTopN(durationLabels.map(function (label, index) { return { label: label, value: durationTotals[index] }; }), 1)[0] || null;
+    const durationShare = formatPercent(getShare(leadingDuration?.value || 0, durationTotal));
+    
+    // DistrictDataSection doesn't have age data (D12) yet, so we define these as null
+    const leadingAge = null;
+    const topAgeShare = null;
 
     if (!selectedState) {
         return (
@@ -537,7 +569,7 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
             ) : null}
 
             {activeTab === 'overview' ? (
-            <section className="profile-grid two-up">
+            <section className="profile-grid">
                 <div className="card compact-card">
                     <h3 className="card-title">Male / Female</h3>
                     <SourceTag tableName="D01 District Flows" />
@@ -565,277 +597,6 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         <span>Rural: {formatPercent(getShare(totalRural, totalUrban + totalRural))}</span>
                     </div>
                 </div>
-            </section>
-            ) : null}
-
-            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
-            <section className="charts-grid">
-                {activeTab === 'drivers' ? (
-                <div className="card compact-card duration-card card-with-info">
-                    <ChartInfoPopover infoId="district-duration" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={durationInfoItems} />
-                    <h3 className="card-title">Duration of Stay</h3>
-                    <SourceTag tableName="D02 District" />
-                    <div className="flip-box social-flip-box">
-                        <div className={`flip-inner ${durationFlipped ? 'flipped' : ''}`}>
-                            <div className="side">
-                                <div className="chart-box social-chart">
-                                    {hasDurationData ? (
-                                        <Bar
-                                            data={{
-                                                labels: durationLabels,
-                                                datasets: [{
-                                                    label: 'Persons',
-                                                    data: durationTotals,
-                                                    backgroundColor: '#f59e0b',
-                                                    borderRadius: 8,
-                                                    maxBarThickness: 52
-                                                }]
-                                            }}
-                                            options={{
-                                                responsive: true,
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: false } },
-                                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                                animation: false
-                                            }}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district duration data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="side back-side">
-                                <div className="chart-box social-chart">
-                                    {hasDurationData ? (
-                                        <Bar
-                                            data={{
-                                                labels: durationLabels,
-                                                datasets: [
-                                                    { label: 'Male', data: durationMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
-                                                    { label: 'Female', data: durationFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
-                                                ]
-                                            }}
-                                            options={buildHorizontalStackedOptions()}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district duration data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="footer">
-                        <span>{durationFlipped ? 'Gender split by duration' : `Total duration records: ${durationTotal.toLocaleString()}`}</span>
-                        <button
-                            type="button"
-                            className="link-btn"
-                            onClick={() => setDurationFlipped(function (value) { return !value; })}
-                            disabled={!hasDurationData}
-                        >
-                            {durationFlipped ? 'Show main chart' : 'Show gender split'}
-                        </button>
-                    </div>
-                </div>
-                ) : null}
-
-                {activeTab === 'demographics' ? (
-                <div className="card compact-card card-with-info">
-                    <ChartInfoPopover infoId="district-education-levels" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
-                    <h3 className="card-title">Education Levels</h3>
-                    <SourceTag tableName="D04 District" />
-                    <div className="flip-box social-flip-box">
-                        <div className={`flip-inner ${educationFlipped ? 'flipped' : ''}`}>
-                            <div className="side">
-                                <div className="chart-box social-chart">
-                                    {hasEducationData ? (
-                                        <Bar
-                                            data={{
-                                                labels: educationLabels,
-                                                datasets: [{
-                                                    label: 'Persons',
-                                                    data: educationValues,
-                                                    backgroundColor: '#16a34a',
-                                                    borderRadius: 8,
-                                                    maxBarThickness: 54
-                                                }]
-                                            }}
-                                            options={{
-                                                responsive: true,
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: false } },
-                                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                                animation: false
-                                            }}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district education data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="side back-side">
-                                <div className="chart-box social-chart">
-                                    {hasEducationData ? (
-                                        <Bar
-                                            data={{
-                                                labels: educationLabels,
-                                                datasets: [
-                                                    { label: 'Male', data: educationMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
-                                                    { label: 'Female', data: educationFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
-                                                ]
-                                            }}
-                                            options={buildHorizontalStackedOptions()}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district education data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="footer">
-                        <span>
-                            {hasEducationData
-                                ? `Total records: ${educationTotal.toLocaleString()} | Literacy: ${formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))}`
-                                : 'No education totals for this district'}
-                        </span>
-                        <button
-                            type="button"
-                            className="link-btn"
-                            onClick={() => setEducationFlipped(function (value) { return !value; })}
-                            disabled={!hasEducationData}
-                        >
-                            {educationFlipped ? 'Show main chart' : 'Show gender split'}
-                        </button>
-                    </div>
-                </div>
-                ) : null}
-            </section>
-            ) : null}
-
-            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
-            <section className="three-chart-row">
-                {activeTab === 'drivers' ? (
-                <div className="card compact-card card-with-info">
-                    <ChartInfoPopover infoId="district-migration-reason" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={reasonInfoItems} />
-                    <h3 className="card-title">Reason for Migration</h3>
-                    <SourceTag tableName="D03 District" />
-                    <div className="flip-box social-flip-box">
-                        <div className={`flip-inner ${reasonFlipped ? 'flipped' : ''}`}>
-                            <div className="side">
-                                {hasReasonData ? (
-                                    <BreakdownPie
-                                        labels={reasonLabels}
-                                        values={reasonTotals}
-                                        colors={['#0f766e', '#d97706', '#7c3aed', '#b45309', '#ea580c', '#65a30d', '#6b7280']}
-                                    />
-                                ) : (
-                                    <p className="no-data">No district reason data found for this selection.</p>
-                                )}
-                            </div>
-                            <div className="side back-side">
-                                <div className="chart-box social-chart">
-                                    {hasReasonData ? (
-                                        <Bar
-                                            data={{
-                                                labels: reasonLabels,
-                                                datasets: [
-                                                    { label: 'Male', data: reasonMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
-                                                    { label: 'Female', data: reasonFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
-                                                ]
-                                            }}
-                                            options={buildHorizontalStackedOptions()}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district reason data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="footer">
-                        <span>{reasonFlipped ? 'Gender split by reason' : `Total reason records: ${reasonTotal.toLocaleString()}`}</span>
-                        <button
-                            type="button"
-                            className="link-btn"
-                            onClick={() => setReasonFlipped(function (value) { return !value; })}
-                            disabled={!hasReasonData}
-                        >
-                            {reasonFlipped ? 'Show main chart' : 'Show gender split'}
-                        </button>
-                    </div>
-                </div>
-                ) : null}
-
-                {activeTab === 'drivers' ? (
-                <div className="card compact-card card-with-info">
-                    <ChartInfoPopover infoId="district-economic-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />
-                    <h3 className="card-title">Economic Activity</h3>
-                    <SourceTag tableName="D06 District" />
-                    <div className="flip-box social-flip-box">
-                        <div className={`flip-inner ${activityFlipped ? 'flipped' : ''}`}>
-                            <div className="side">
-                                <div className="chart-box social-chart">
-                                    {hasActivityData ? (
-                                        <Bar
-                                            data={{
-                                                labels: activityLabels,
-                                                datasets: [{
-                                                    label: 'Persons',
-                                                    data: activityValues,
-                                                    backgroundColor: '#14b8a6',
-                                                    borderRadius: 8,
-                                                    maxBarThickness: 72
-                                                }]
-                                            }}
-                                            options={{
-                                                responsive: true,
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: false } },
-                                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                                animation: false
-                                            }}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district activity data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="side back-side">
-                                <div className="chart-box social-chart">
-                                    {hasActivityData ? (
-                                        <Bar
-                                            data={{
-                                                labels: activityLabels,
-                                                datasets: [
-                                                    { label: 'Male', data: activityMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 72 },
-                                                    { label: 'Female', data: activityFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 72 }
-                                                ]
-                                            }}
-                                            options={buildHorizontalStackedOptions()}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district activity data found for this selection.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="footer">
-                        <span>{hasActivityData ? `Total records: ${activityTotal.toLocaleString()}` : 'No activity totals for this district'}</span>
-                        <button
-                            type="button"
-                            className="link-btn"
-                            onClick={() => setActivityFlipped(function (value) { return !value; })}
-                            disabled={!hasActivityData}
-                        >
-                            {activityFlipped ? 'Show main chart' : 'Show gender split'}
-                        </button>
-                    </div>
-                </div>
-                ) : null}
-
-                {activeTab === 'demographics' ? (
                 <div className="card compact-card">
                     <h3 className="card-title">Literate / Illiterate</h3>
                     <SourceTag tableName="D04 District" />
@@ -855,74 +616,328 @@ export default function DistrictDataSection({ selectedState, selectedDistrict, d
                         <p className="no-data">No district education data found for this selection.</p>
                     )}
                 </div>
+            </section>
+            ) : null}
+
+            {activeTab === 'overview' ? (
+            <section>
+                <MigrationInsightCard
+                    title="General Migration Insight"
+                    accent="#0f766e"
+                    badge="District overview"
+                    heroValue={totalFlow.toLocaleString()}
+                    heroLabel={`total in-migrants`}
+                    summary={topCounterpart
+                        ? `${topCounterpart.name} is the strongest origin corridor with ${formatPercent(getShare(topCounterpart.value, totalFlow))} of all migrants. ${leadingReason ? `${leadingReason.label} leads migration reasons at ${topReasonShare}` : ''}${leadingAge ? `, while ${leadingAge.label.toLowerCase()} remains the biggest age band at ${topAgeShare}` : ''}. ${leadingDuration ? `Most migrants have stayed ${leadingDuration.label.toLowerCase()}, accounting for ${durationShare} of duration records.` : ''} The literacy rate among migrants is ${literacyShare}.`
+                        : 'No strong corridor is available above the current threshold.'}
+                    items={[
+                        { label: 'Top origin share', value: topCounterpart ? `${topCounterpart.name} · ${formatPercent(getShare(topCounterpart.value, totalFlow))}` : '—' },
+                        { label: '2nd counterpart', value: counterpartRows[1] ? `${counterpartRows[1].name} · ${formatPercent(getShare(counterpartRows[1].value, totalFlow))}` : '—' },
+                        { label: 'Leading reason', value: leadingReason ? `${leadingReason.label} · ${topReasonShare}` : '—' },
+                        { label: 'Leading duration', value: leadingDuration ? `${leadingDuration.label} · ${durationShare}` : '—' },
+                        { label: 'Male migrants', value: totalMale.toLocaleString() },
+                        { label: 'Female migrants', value: totalFemale.toLocaleString() },
+                        { label: 'Female share', value: femaleShare },
+                        { label: 'Urban share', value: urbanShare },
+                        { label: 'Literacy rate', value: literacyShare },
+                        { label: 'Total corridors', value: relevantFlows.length.toLocaleString() }
+                    ]}
+                />
+            </section>
+            ) : null}
+
+            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
+            <section className="charts-grid">
+                {activeTab === 'drivers' ? (
+                    <ChartPair
+                        pairIndex={0}
+                        mainTitle="Duration of Stay"
+                        splitTitle="Duration — Gender Split"
+                        tableName="D02 District"
+                        infoId="district-duration"
+                        infoItems={durationInfoItems}
+                        openInfoId={openInfoId}
+                        setOpenInfoId={setOpenInfoId}
+                        mainContent={
+                            <div className="chart-box">
+                                {hasDurationData ? (
+                                    <Bar
+                                        data={{
+                                            labels: durationLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: durationTotals,
+                                                backgroundColor: '#f59e0b',
+                                                borderRadius: 8,
+                                                maxBarThickness: 52
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district duration data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        splitContent={
+                            <div className="chart-box">
+                                {hasDurationData ? (
+                                    <Bar
+                                        data={{
+                                            labels: durationLabels,
+                                            datasets: [
+                                                { label: 'Male', data: durationMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
+                                                { label: 'Female', data: durationFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district duration data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        mainFooter={`Total duration records: ${durationTotal.toLocaleString()}`}
+                        splitFooter="Gender split by duration"
+                    />
                 ) : null}
 
                 {activeTab === 'demographics' ? (
-                <div className="card compact-card card-with-info">
-                    <ChartInfoPopover infoId="district-marital-status" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={maritalInfoItems} />
-                    <h3 className="card-title">Marital Status</h3>
-                    <SourceTag tableName="D10 District" />
-                    <div className="flip-box social-flip-box">
-                        <div className={`flip-inner ${maritalFlipped ? 'flipped' : ''}`}>
-                            <div className="side">
-                                <div className="chart-box social-chart">
-                                    {hasMaritalData ? (
-                                        <Bar
-                                            data={{
-                                                labels: maritalLabels,
-                                                datasets: [{
-                                                    label: 'Persons',
-                                                    data: maritalValues,
-                                                    backgroundColor: '#8b5cf6',
-                                                    borderRadius: 8,
-                                                    maxBarThickness: 54
-                                                }]
-                                            }}
-                                            options={{
-                                                responsive: true,
-                                                maintainAspectRatio: false,
-                                                plugins: { legend: { display: false } },
-                                                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                                animation: false
-                                            }}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district marital-status data found for this selection.</p>
-                                    )}
-                                </div>
+                    <ChartPair
+                        pairIndex={0}
+                        mainTitle="Education Levels"
+                        splitTitle="Education — Gender Split"
+                        tableName="D04 District"
+                        infoId="district-education-levels"
+                        infoItems={educationInfoItems}
+                        openInfoId={openInfoId}
+                        setOpenInfoId={setOpenInfoId}
+                        mainContent={
+                            <div className="chart-box">
+                                {hasEducationData ? (
+                                    <Bar
+                                        data={{
+                                            labels: educationLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: educationValues,
+                                                backgroundColor: '#16a34a',
+                                                borderRadius: 8,
+                                                maxBarThickness: 54
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district education data found for this selection.</p>
+                                )}
                             </div>
-                            <div className="side back-side">
-                                <div className="chart-box social-chart">
-                                    {hasMaritalData ? (
-                                        <Bar
-                                            data={{
-                                                labels: maritalLabels,
-                                                datasets: [
-                                                    { label: 'Male', data: maritalMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
-                                                    { label: 'Female', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
-                                                ]
-                                            }}
-                                            options={buildHorizontalStackedOptions()}
-                                        />
-                                    ) : (
-                                        <p className="no-data">No district marital-status data found for this selection.</p>
-                                    )}
-                                </div>
+                        }
+                        splitContent={
+                            <div className="chart-box">
+                                {hasEducationData ? (
+                                    <Bar
+                                        data={{
+                                            labels: educationLabels,
+                                            datasets: [
+                                                { label: 'Male', data: educationMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
+                                                { label: 'Female', data: educationFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district education data found for this selection.</p>
+                                )}
                             </div>
-                        </div>
-                    </div>
-                    <div className="footer">
-                        <span>{hasMaritalData ? `Total records: ${maritalTotal.toLocaleString()}` : 'No marital-status totals for this district'}</span>
-                        <button
-                            type="button"
-                            className="link-btn"
-                            onClick={() => setMaritalFlipped(function (value) { return !value; })}
-                            disabled={!hasMaritalData}
-                        >
-                            {maritalFlipped ? 'Show main chart' : 'Show gender split'}
-                        </button>
-                    </div>
-                </div>
+                        }
+                        mainFooter={hasEducationData
+                            ? `Total records: ${educationTotal.toLocaleString()} | Literacy: ${formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))}`
+                            : 'No education totals for this district'}
+                        splitFooter="Gender split by education"
+                    />
+                ) : null}
+            </section>
+            ) : null}
+
+            {(activeTab === 'drivers' || activeTab === 'demographics') ? (
+            <section className="three-chart-row">
+                {activeTab === 'drivers' ? (
+                    <ChartPair
+                        pairIndex={1}
+                        mainTitle="Reason for Migration"
+                        splitTitle="Reason — Gender Split"
+                        tableName="D03 District"
+                        infoId="district-migration-reason"
+                        infoItems={reasonInfoItems}
+                        openInfoId={openInfoId}
+                        setOpenInfoId={setOpenInfoId}
+                        mainContent={
+                            hasReasonData ? (
+                                <BreakdownPie
+                                    labels={reasonLabels}
+                                    values={reasonTotals}
+                                    colors={['#0f766e', '#d97706', '#7c3aed', '#b45309', '#ea580c', '#65a30d', '#6b7280']}
+                                />
+                            ) : (
+                                <p className="no-data">No district reason data found for this selection.</p>
+                            )
+                        }
+                        splitContent={
+                            <div className="chart-box">
+                                {hasReasonData ? (
+                                    <Bar
+                                        data={{
+                                            labels: reasonLabels,
+                                            datasets: [
+                                                { label: 'Male', data: reasonMaleTotals, backgroundColor: '#2563eb', borderRadius: 6, maxBarThickness: 40 },
+                                                { label: 'Female', data: reasonFemaleTotals, backgroundColor: '#ec4899', borderRadius: 6, maxBarThickness: 40 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district reason data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        mainFooter={`Total reason records: ${reasonTotal.toLocaleString()}`}
+                        splitFooter="Gender split by reason"
+                    />
+                ) : null}
+
+                {activeTab === 'drivers' ? (
+                    <ChartPair
+                        pairIndex={2}
+                        mainTitle="Economic Activity"
+                        splitTitle="Activity — Gender Split"
+                        tableName="D06 District"
+                        infoId="district-economic-activity"
+                        infoItems={activityInfoItems}
+                        openInfoId={openInfoId}
+                        setOpenInfoId={setOpenInfoId}
+                        mainContent={
+                            <div className="chart-box">
+                                {hasActivityData ? (
+                                    <Bar
+                                        data={{
+                                            labels: activityLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: activityValues,
+                                                backgroundColor: '#14b8a6',
+                                                borderRadius: 8,
+                                                maxBarThickness: 72
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district activity data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        splitContent={
+                            <div className="chart-box">
+                                {hasActivityData ? (
+                                    <Bar
+                                        data={{
+                                            labels: activityLabels,
+                                            datasets: [
+                                                { label: 'Male', data: activityMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 72 },
+                                                { label: 'Female', data: activityFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 72 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district activity data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        mainFooter={hasActivityData ? `Total records: ${activityTotal.toLocaleString()}` : 'No activity totals for this district'}
+                        splitFooter="Gender split by activity"
+                    />
+                ) : null}
+
+
+
+                {activeTab === 'demographics' ? (
+                    <ChartPair
+                        pairIndex={1}
+                        mainTitle="Marital Status"
+                        splitTitle="Marital — Gender Split"
+                        tableName="D10 District"
+                        infoId="district-marital-status"
+                        infoItems={maritalInfoItems}
+                        openInfoId={openInfoId}
+                        setOpenInfoId={setOpenInfoId}
+                        mainContent={
+                            <div className="chart-box">
+                                {hasMaritalData ? (
+                                    <Bar
+                                        data={{
+                                            labels: maritalLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: maritalValues,
+                                                backgroundColor: '#8b5cf6',
+                                                borderRadius: 8,
+                                                maxBarThickness: 54
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district marital-status data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        splitContent={
+                            <div className="chart-box">
+                                {hasMaritalData ? (
+                                    <Bar
+                                        data={{
+                                            labels: maritalLabels,
+                                            datasets: [
+                                                { label: 'Male', data: maritalMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
+                                                { label: 'Female', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
+                                            ]
+                                        }}
+                                        options={buildHorizontalStackedOptions()}
+                                    />
+                                ) : (
+                                    <p className="no-data">No district marital-status data found for this selection.</p>
+                                )}
+                            </div>
+                        }
+                        mainFooter={hasMaritalData ? `Total records: ${maritalTotal.toLocaleString()}` : 'No marital-status totals for this district'}
+                        splitFooter="Gender split by marital status"
+                    />
                 ) : null}
             </section>
             ) : null}
