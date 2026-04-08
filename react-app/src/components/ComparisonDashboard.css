@@ -5,8 +5,8 @@
 }
 
 .comparison-header {
-  background: #ffffff;
-  border: 1px solid #e7e5e4;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
   border-radius: 14px;
   padding: 18px 20px;
 }
@@ -28,14 +28,14 @@
   margin-left: auto;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
   text-align: right;
 }
 
 .comparison-title {
   margin: 0;
-  color: #1c1917;
+  color: var(--text-primary);
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -43,7 +43,7 @@
 
 .comparison-pair {
   margin: 8px 0 0;
-  color: #1c1917;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 700;
 }
@@ -87,8 +87,8 @@
 }
 
 .comparison-insight-primary {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 253, 250, 0.98) 100%);
-  border-color: #b7f0e0;
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-primary) 100%);
+  border-color: var(--accent-teal-light);
 }
 
 .comparison-insight-lead {
@@ -109,8 +109,8 @@
 .comparison-insight-stat {
   padding: 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
   min-height: 84px;
   display: flex;
   flex-direction: column;
@@ -120,7 +120,7 @@
 .comparison-insight-stat-label {
   font-size: 10px;
   font-weight: 800;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -170,6 +170,10 @@
   }
 
   .comparison-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .comparison-insight-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 

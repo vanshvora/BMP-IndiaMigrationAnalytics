@@ -342,6 +342,28 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             </section>
 
             <section className="comparison-section">
+                <ComparisonInsightCard
+                    title="Comparison Notes"
+                    accentClass="comparison-insight-primary"
+                    lead={getComparisonSentence(
+                        'Migration volume',
+                        stateA,
+                        stateAMetrics.totalFlow,
+                        stateB,
+                        stateBMetrics.totalFlow,
+                        function (value) { return Number(value).toLocaleString(); },
+                        0
+                    )}
+                    items={[
+                        { label: `${stateA} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateATopCounterpart ? stateATopCounterpart.name : 'No data' },
+                        { label: `${stateB} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateBTopCounterpart ? stateBTopCounterpart.name : 'No data' },
+                        { label: `${stateA} leading reason`, value: stateALeadingReason ? `${stateALeadingReason.label} | ${formatPercent(getShare(stateALeadingReason.value, stateAReasonTotal))}` : 'No data' },
+                        { label: `${stateB} leading reason`, value: stateBLeadingReason ? `${stateBLeadingReason.label} | ${formatPercent(getShare(stateBLeadingReason.value, stateBReasonTotal))}` : 'No data' }
+                    ]}
+                />
+            </section>
+
+            <section className="comparison-section">
                 <div className="comparison-grid comparison-grid-3 comparison-grid-counterparts">
                     <div className="card">
                         <h3 className="card-title">{stateA} {counterpartAxisTitle}</h3>
@@ -478,7 +500,7 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
             </section>
 
             <section className="comparison-section">
-                <div className="comparison-grid comparison-grid-3 comparison-grid-insight">
+                <div className="comparison-grid comparison-grid-2">
                     <div className="card card-with-info">
                         <ChartInfoPopover infoId="compare-education" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={educationInfoItems} />
                         <h3 className="card-title">Education Levels</h3>
@@ -495,30 +517,6 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                             />
                         </div>
                     </div>
-
-                    <ComparisonInsightCard
-                        title="Comparison Notes"
-                        accentClass="comparison-insight-primary"
-                        lead={getComparisonSentence(
-                            'Migration volume',
-                            stateA,
-                            stateAMetrics.totalFlow,
-                            stateB,
-                            stateBMetrics.totalFlow,
-                            function (value) { return Number(value).toLocaleString(); },
-                            0
-                        )}
-                        items={[
-                            { label: `${stateA} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateATopCounterpart ? stateATopCounterpart.name : 'No data' },
-                            { label: `${stateB} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateBTopCounterpart ? stateBTopCounterpart.name : 'No data' },
-                            { label: `${stateA} leading reason`, value: stateALeadingReason ? `${stateALeadingReason.label} | ${formatPercent(getShare(stateALeadingReason.value, stateAReasonTotal))}` : 'No data' },
-                            { label: `${stateB} leading reason`, value: stateBLeadingReason ? `${stateBLeadingReason.label} | ${formatPercent(getShare(stateBLeadingReason.value, stateBReasonTotal))}` : 'No data' },
-                            { label: `${stateA} female share`, value: formatPercent(stateAMetrics.femaleShare) },
-                            { label: `${stateB} female share`, value: formatPercent(stateBMetrics.femaleShare) },
-                            { label: `${stateA} literacy`, value: formatPercent(stateAMetrics.literacyRate) },
-                            { label: `${stateB} literacy`, value: formatPercent(stateBMetrics.literacyRate) }
-                        ]}
-                    />
 
                     <div className="card card-with-info">
                         <ChartInfoPopover infoId="compare-activity" openInfoId={openInfoId} setOpenInfoId={setOpenInfoId} items={activityInfoItems} />

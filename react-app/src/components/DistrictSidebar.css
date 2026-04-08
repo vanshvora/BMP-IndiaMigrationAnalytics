@@ -1,5 +1,5 @@
 .district-control-panel {
-  background: #eefcf7;
+  background: var(--bg-primary);
 }
 
 .district-filter-block {
@@ -13,22 +13,22 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: #0f766e;
+  color: var(--accent-teal);
 }
 
 .district-picker {
   width: 100%;
-  border: 1px solid #99f6e4;
+  border: 1px solid var(--accent-teal-light);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #ffffff;
+  background: var(--bg-surface);
   color: #134e4a;
   font-size: 14px;
 }
 
 .district-picker:disabled {
-  background: #f0fdfa;
-  color: #94a3b8;
+  background: var(--sidebar-hover);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
@@ -51,5 +51,5 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: #0f766e;
+  color: var(--accent-teal);
 }
