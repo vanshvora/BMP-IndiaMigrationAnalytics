@@ -83,7 +83,8 @@
 
 .comparison-insight-card {
   min-height: 0;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 12px;
 }
 
 .comparison-insight-primary {
@@ -92,8 +93,8 @@
 }
 
 .comparison-insight-lead {
-  margin: 6px 0 0;
-  font-size: 18px;
+  margin: 4px 0 0;
+  font-size: 16px;
   line-height: 1.35;
   font-weight: 700;
   color: #0f172a;
@@ -103,18 +104,19 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 4px;
 }
 
 .comparison-insight-stat {
-  padding: 12px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
-  min-height: 84px;
+  min-height: 64px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 6px;
 }
 
 .comparison-insight-stat-label {
@@ -126,7 +128,7 @@
 }
 
 .comparison-insight-stat-value {
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.25;
   color: #0f172a;
   letter-spacing: -0.02em;
@@ -160,10 +162,6 @@
   align-items: start;
 }
 
-.comparison-grid-insight .comparison-insight-card {
-  min-height: 250px;
-}
-
 @media (min-width: 980px) {
   .comparison-grid-2 {
     grid-template-columns: 1fr 1fr;
@@ -174,7 +172,7 @@
   }
 
   .comparison-insight-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .comparison-grid-3 {
@@ -192,6 +190,12 @@
 
 .comparison-dashboard .comparison-summary-card {
   min-height: 0;
+}
+
+.comparison-dashboard .comparison-insight-card {
+  min-height: 0;
+  height: auto;
+  width: 100%;
 }
 
 .comparison-dashboard .chart-box,

@@ -343,7 +343,7 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
 
             <section className="comparison-section">
                 <ComparisonInsightCard
-                    title="Comparison Notes"
+                    title="Insights"
                     accentClass="comparison-insight-primary"
                     lead={getComparisonSentence(
                         'Migration volume',
@@ -358,7 +358,9 @@ export default function ComparisonDashboard({ flows, flowType, threshold, stateA
                         { label: `${stateA} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateATopCounterpart ? stateATopCounterpart.name : 'No data' },
                         { label: `${stateB} top ${flowType === 'inflow' ? 'origin' : 'destination'}`, value: stateBTopCounterpart ? stateBTopCounterpart.name : 'No data' },
                         { label: `${stateA} leading reason`, value: stateALeadingReason ? `${stateALeadingReason.label} | ${formatPercent(getShare(stateALeadingReason.value, stateAReasonTotal))}` : 'No data' },
-                        { label: `${stateB} leading reason`, value: stateBLeadingReason ? `${stateBLeadingReason.label} | ${formatPercent(getShare(stateBLeadingReason.value, stateBReasonTotal))}` : 'No data' }
+                        { label: `${stateB} leading reason`, value: stateBLeadingReason ? `${stateBLeadingReason.label} | ${formatPercent(getShare(stateBLeadingReason.value, stateBReasonTotal))}` : 'No data' },
+                        { label: 'Stronger literacy profile', value: `${literacyLeader} | ${formatPercent(literacyLeaderValue)}` },
+                        { label: 'Higher female share', value: `${femaleLeader} | ${formatPercent(femaleLeaderValue)}` }
                     ]}
                 />
             </section>
