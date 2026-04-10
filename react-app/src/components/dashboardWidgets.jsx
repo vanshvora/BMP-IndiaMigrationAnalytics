@@ -1,6 +1,6 @@
 import { Pie } from 'react-chartjs-2';
 
-export function BreakdownPie({ labels, values, colors, onClick }) {
+export function BreakdownPie({ labels, values, colors, onClick, donut }) {
     let total = 0;
     for (let i = 0; i < values.length; i++) total += Number(values[i]) || 0;
 
@@ -11,7 +11,8 @@ export function BreakdownPie({ labels, values, colors, onClick }) {
             backgroundColor: colors,
             borderColor: Array(values.length).fill('#ffffff'),
             borderWidth: 2,
-            hoverOffset: 8
+            hoverOffset: 8,
+            cutout: donut ? '55%' : 0
         }]
     };
 

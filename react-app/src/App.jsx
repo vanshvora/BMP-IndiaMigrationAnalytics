@@ -20,15 +20,17 @@ const EXPLORE_LINKS = [
     { id: 'state', label: 'State Explorer', description: 'State-level inflow and outflow corridors' },
     { id: 'district', label: 'District Explorer', description: 'District-level corridor analysis' },
     { id: 'compare', label: 'Compare States', description: 'Two-state comparative analytics view' },
+    { id: 'compare-district', label: 'Compare Districts', description: 'Two-district comparative analytics view' },
 ];
 
-const MAP_PAGES = new Set(['state', 'district', 'compare']);
+const MAP_PAGES = new Set(['state', 'district', 'compare', 'compare-district']);
 
 function getPageFromHash() {
     const hash = window.location.hash.replace('#', '').trim().toLowerCase();
     if (hash === 'state') return 'state';
     if (hash === 'district') return 'district';
     if (hash === 'compare') return 'compare';
+    if (hash === 'compare-district') return 'compare-district';
     if (hash === 'ai') return 'ai';
     if (hash === 'methodology') return 'methodology';
     if (hash === 'faq') return 'faq';
@@ -196,6 +198,7 @@ export default function App() {
             {currentPage === 'state' ? <StateDashboardPage /> : null}
             {currentPage === 'compare' ? <StateDashboardPage key="compare-view" initialCompareMode /> : null}
             {currentPage === 'district' ? <DistrictDashboardPage /> : null}
+            {currentPage === 'compare-district' ? <DistrictDashboardPage key="district-compare-view" initialCompareMode /> : null}
             {currentPage === 'ai' ? <AIChatPage /> : null}
             {currentPage === 'methodology' ? <MethodologyPage /> : null}
             {currentPage === 'faq' ? <FAQPage /> : null}

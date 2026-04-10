@@ -14,8 +14,9 @@
 .smp-inner {
   position: absolute;
   right: 14px;
-  top: 50%;
-  transform: translateY(-50%) translateX(12px);
+  top: 72px;
+  bottom: 14px;
+  transform: translateX(12px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -25,15 +26,14 @@
 
 .state-map-popup--compare .smp-inner {
   flex-direction: column;
-  top: 14px;
+  top: 72px;
   bottom: 14px;
-  transform: translateX(12px);
-  justify-content: center;
-  max-height: calc(100% - 28px);
+  justify-content: flex-start;
+  overflow: hidden;
 }
 
 .state-map-popup--visible .smp-inner {
-  transform: translateY(-50%) translateX(0);
+  transform: translateX(0);
 }
 
 .state-map-popup--compare.state-map-popup--visible .smp-inner {
@@ -59,13 +59,18 @@
 }
 
 .state-map-popup--compare .smp-card {
-  width: 270px;
-  flex: 0 0 auto;
+  width: 220px;
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: calc((100% - 8px) / 2);
+  padding: 8px;
 }
 
 .state-map-popup--compare .smp-img-wrap {
   aspect-ratio: auto;
-  height: 200px;
+  height: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .smp-label {
@@ -86,7 +91,7 @@
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-primary);
+  background: var(--bg-surface);
 }
 
 .smp-img-button {
@@ -110,11 +115,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-primary);
+  background: var(--bg-surface);
 }
 
 .smp-error {
-  background: #fff7ed;
+  background: var(--bg-surface);
 }
 
 .smp-error-text {
@@ -183,7 +188,7 @@
   flex: 1;
   border-radius: 14px;
   overflow: hidden;
-  background: var(--bg-primary);
+  background: var(--bg-surface);
 }
 
 .smp-expanded-img {
@@ -220,15 +225,29 @@
   .smp-card {
     width: 220px;
   }
+
+  .state-map-popup--compare .smp-img-wrap {
+    height: auto;
+  }
 }
 
 @media (max-width: 640px) {
   .smp-inner {
     right: 10px;
+    top: 76px;
+    bottom: 10px;
+  }
+
+  .state-map-popup--compare .smp-inner {
+    top: 76px;
   }
 
   .smp-card {
     width: 220px;
+  }
+
+  .state-map-popup--compare .smp-card {
+    width: 190px;
   }
 
   .smp-expanded-overlay {

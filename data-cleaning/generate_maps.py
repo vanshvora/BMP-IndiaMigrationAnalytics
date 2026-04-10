@@ -65,7 +65,7 @@ BOUNDARY_COLOR = '#334155'
 FILL_COLOR = '#f0f9ff'
 INNER_BOUNDARY_COLOR = '#94a3b8'
 LABEL_COLOR = '#1e293b'
-BG_COLOR = '#ffffff'
+BG_COLOR = 'none'
 
 
 def normalize_state(name):
@@ -107,7 +107,8 @@ def normalize_taluka(name):
 
 
 def to_filename(name):
-    return str(name).replace(' ', '_').replace('&', 'AND').replace('/', '_')
+    value = str(name).upper().replace('&', 'AND')
+    return re.sub(r'[^A-Z0-9]+', '', value)
 
 
 def download_geojson(url, cache_name):
@@ -146,8 +147,8 @@ def get_taluka_rows(l3_gdf, gid2, state_norm, district_norm):
 
 def make_state_png(state_norm, state_geom, district_gdf_state, out_path):
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    fig.patch.set_facecolor(BG_COLOR)
-    ax.set_facecolor(BG_COLOR)
+    fig.patch.set_alpha(0)
+    ax.set_facecolor('none')
     ax.set_aspect('equal')
     ax.axis('off')
 
@@ -178,14 +179,14 @@ def make_state_png(state_norm, state_geom, district_gdf_state, out_path):
                 pass
 
     plt.tight_layout(pad=0.1)
-    plt.savefig(out_path, dpi=150, bbox_inches='tight', facecolor=BG_COLOR, edgecolor='none', format='png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', transparent=True, edgecolor='none', format='png')
     plt.close(fig)
 
 
 def make_district_png(district_norm, district_geom, taluka_gdf_district, out_path):
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    fig.patch.set_facecolor(BG_COLOR)
-    ax.set_facecolor(BG_COLOR)
+    fig.patch.set_alpha(0)
+    ax.set_facecolor('none')
     ax.set_aspect('equal')
     ax.axis('off')
 
@@ -232,7 +233,7 @@ def make_district_png(district_norm, district_geom, taluka_gdf_district, out_pat
             pass
 
     plt.tight_layout(pad=0.1)
-    plt.savefig(out_path, dpi=150, bbox_inches='tight', facecolor=BG_COLOR, edgecolor='none', format='png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', transparent=True, edgecolor='none', format='png')
     plt.close(fig)
 
 

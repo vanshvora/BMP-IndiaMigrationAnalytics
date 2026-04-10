@@ -53,3 +53,82 @@
   line-height: 1.5;
   color: var(--accent-teal);
 }
+
+.district-control-panel--compare {
+  gap: 10px;
+  padding: 12px;
+}
+
+.district-control-panel--compare .panel-head {
+  margin-bottom: 0;
+}
+
+.district-control-panel--compare .panel-heading {
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.district-control-panel--compare .selected-state {
+  font-size: 15px;
+  max-width: 230px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.district-control-panel--compare .panel-card {
+  padding: 10px 11px;
+  border-radius: 13px;
+}
+
+.district-control-panel--compare .compare-picker-grid {
+  gap: 8px;
+}
+
+.district-control-panel--compare .compare-picker-block {
+  gap: 4px;
+}
+
+.district-control-panel--compare .compare-picker-label {
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.district-control-panel--compare .compare-picker {
+  min-height: 31px;
+  font-size: 12px;
+  padding: 0 10px;
+}
+
+.district-control-panel--compare .filter-block {
+  margin-top: 10px;
+}
+
+.district-control-panel--compare .filter-head {
+  margin-bottom: 6px;
+}
+
+.district-control-panel--compare .filter-name,
+.district-control-panel--compare .filter-value {
+  font-size: 11px;
+}
+
+.district-control-panel--compare .compare-row {
+  margin-bottom: 6px;
+}
+
+.district-control-panel--compare .section-label {
+  margin-bottom: 0;
+  font-size: 10px;
+}
+
+.district-control-panel--compare .compare-mode-toggle {
+  padding: 4px;
+}
+
+.district-control-panel--compare .compare-mode-btn {
+  min-height: 31px;
+  font-size: 12px;
+}

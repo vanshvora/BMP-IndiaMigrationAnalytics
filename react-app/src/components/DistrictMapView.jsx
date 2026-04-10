@@ -7,7 +7,7 @@ import '../utils/leafletCurve';
 
 const DISTRICT_GEOJSON_URL = 'https://raw.githubusercontent.com/geohacker/india/master/district/india_district.geojson';
 const STATE_GEOJSON_URL = 'https://raw.githubusercontent.com/geohacker/india/master/state/india_telengana.geojson';
-const DISTRICT_COLORS = { base: '#0f766e' };
+const DISTRICT_COLORS = { base: '#0f766e', compareA: '#0f766e', compareB: '#f97316' };
 const TELANGANA_DISTRICTS = new Set([
     'ADILABAD', 'NIZAMABAD', 'KARIMNAGAR', 'MEDAK', 'WARANGAL',
     'RANGAREDDI', 'RANGAREDDY', 'HYDERABAD', 'NALGONDA', 'KHAMMAM', 'MAHBUBNAGAR'
@@ -102,7 +102,11 @@ function getFeatureCenter(feature) {
     return layer.getBounds().getCenter();
 }
 
-function DistrictMapActionController({ mapAction, selectedDistrict, districtCentroids, filteredGeoData }) {
+function getDistrictCentroidKey(stateName, districtName) {
+    return `${stateName || ''}::${normalizeDistrictName(districtName)}`;
+}
+
+function DistrictMapActionController({ mapAction, selectedState, selectedDistrict, districtCentroids, filteredGeoData }) {
     const map = useMap();
 
     useEffect(() => {
@@ -119,12 +123,12 @@ function DistrictMapActionController({ mapAction, selectedDistrict, districtCent
         }
 
         if (mapAction.type === 'focus-selected' && selectedDistrict) {
-            const center = districtCentroids[normalizeDistrictName(selectedDistrict)];
+            const center = districtCentroids[getDistrictCentroidKey(selectedState, selectedDistrict)];
             if (center) {
                 map.flyTo([center.lat, center.lng], 8, { duration: 0.7 });
             }
         }
-    }, [districtCentroids, filteredGeoData, map, mapAction, selectedDistrict]);
+    }, [districtCentroids, filteredGeoData, map, mapAction, selectedDistrict, selectedState]);
 
     useEffect(() => {
         if (!filteredGeoData?.features?.length) return;
@@ -137,7 +141,7 @@ function DistrictMapActionController({ mapAction, selectedDistrict, districtCent
     return null;
 }
 
-function DistrictFlowLines({ flows, threshold, selectedDistrict, districtCentroids }) {
+function DistrictFlowLines({ flows, threshold, selectedState, selectedDistrict, districtCentroids, color = DISTRICT_COLORS.base, markerColor = '#2dd4bf', markerStroke = '#134e4a', labelPrefix = '' }) {
     const map = useMap();
     const linesLayerRef = useRef(L.layerGroup());
 
@@ -147,13 +151,15 @@ function DistrictFlowLines({ flows, threshold, selectedDistrict, districtCentroi
 
         if (!selectedDistrict) return;
 
-        const districtCenter = districtCentroids[normalizeDistrictName(selectedDistrict)];
+        const districtCenter = districtCentroids[getDistrictCentroidKey(selectedState, selectedDistrict)];
         if (!districtCenter) return;
 
         const filtered = [];
         for (let i = 0; i < flows.length; i++) {
             const flow = flows[i];
             if (flow.count < threshold) continue;
+            if (selectedState && flow.state !== selectedState) continue;
+            if (normalizeDistrictName(flow.district) !== normalizeDistrictName(selectedDistrict)) continue;
             const originCoords = COORDINATES[flow.origin];
             if (!originCoords) continue;
             filtered.push(flow);
@@ -171,12 +177,12 @@ function DistrictFlowLines({ flows, threshold, selectedDistrict, districtCentroi
             const lineOpacity = 0.62;
 
             const curve = L.curve(['M', start, 'Q', control, end], {
-                color: DISTRICT_COLORS.base,
+                color,
                 weight: lineWeight,
                 opacity: lineOpacity,
                 fill: false
             });
-            curve.bindTooltip(`${flow.origin} -> ${selectedDistrict}: ${flow.count.toLocaleString()}`);
+            curve.bindTooltip(`${labelPrefix}${flow.origin} -> ${selectedDistrict}: ${flow.count.toLocaleString()}`);
             linesLayer.addLayer(curve);
         }
 
@@ -185,10 +191,10 @@ function DistrictFlowLines({ flows, threshold, selectedDistrict, districtCentroi
                 L.circleMarker([districtCenter.lat, districtCenter.lng], {
                     radius: 7,
                     weight: 2,
-                    color: '#134e4a',
-                    fillColor: '#2dd4bf',
+                    color: markerStroke,
+                    fillColor: markerColor,
                     fillOpacity: 0.95
-                }).bindTooltip(selectedDistrict)
+                }).bindTooltip(`${labelPrefix}${selectedDistrict}`)
             );
         }
 
@@ -197,7 +203,7 @@ function DistrictFlowLines({ flows, threshold, selectedDistrict, districtCentroi
         return () => {
             linesLayer.clearLayers();
         };
-    }, [districtCentroids, flows, map, selectedDistrict, threshold]);
+    }, [color, districtCentroids, flows, labelPrefix, map, markerColor, markerStroke, selectedDistrict, selectedState, threshold]);
 
     return null;
 }
@@ -239,26 +245,32 @@ function IndiaStateGeoJSON({ geoData, selectedState, onStateClick }) {
     return <GeoJSON data={geoData} style={getStateStyle} onEachFeature={onEachFeature} key={`state-${selectedState || 'none'}`} />;
 }
 
-function DistrictGeoJSON({ filteredGeoData, selectedDistrict, onDistrictClick }) {
+function DistrictGeoJSON({ filteredGeoData, selectedDistrict, selectedState, onDistrictClick, compareMode, districtA, districtB }) {
     if (!filteredGeoData?.features?.length) return null;
 
     function getDistrictStyle(feature) {
         const districtName = getDistrictName(feature);
-        const isSelected = normalizeDistrictName(districtName) === normalizeDistrictName(selectedDistrict);
+        const featureState = getStateName(feature);
+        const isSelected = featureState === selectedState && normalizeDistrictName(districtName) === normalizeDistrictName(selectedDistrict);
+        const isDistrictA = compareMode && districtA?.district && featureState === districtA.state && normalizeDistrictName(districtName) === normalizeDistrictName(districtA.district);
+        const isDistrictB = compareMode && districtB?.district && featureState === districtB.state && normalizeDistrictName(districtName) === normalizeDistrictName(districtB.district);
+        const isCompared = isDistrictA || isDistrictB;
+        const compareColor = isDistrictA ? '#0f766e' : '#f97316';
 
         return {
-            color: isSelected ? '#0f766e' : '#64748b',
-            weight: isSelected ? 2.8 : 1.2,
-            fillColor: isSelected ? 'rgba(20, 184, 166, 0.35)' : '#ffffff',
-            fillOpacity: isSelected ? 0.55 : 0.18
+            color: isCompared ? compareColor : (isSelected ? '#0f766e' : '#64748b'),
+            weight: isCompared || isSelected ? 2.8 : 1.2,
+            fillColor: isCompared ? (isDistrictA ? 'rgba(20, 184, 166, 0.36)' : 'rgba(249, 115, 22, 0.35)') : (isSelected ? 'rgba(20, 184, 166, 0.35)' : '#ffffff'),
+            fillOpacity: isCompared || isSelected ? 0.55 : 0.18
         };
     }
 
     function onEachFeature(feature, layer) {
         const districtName = getDistrictName(feature);
-        layer.bindTooltip(districtName, { sticky: true });
+        const featureState = getStateName(feature);
+        layer.bindTooltip(`${districtName}, ${featureState}`, { sticky: true });
         layer.on({
-            click: function () { onDistrictClick(districtName); },
+            click: function () { onDistrictClick(districtName, featureState); },
             mouseover: function (e) {
                 if (normalizeDistrictName(districtName) !== normalizeDistrictName(selectedDistrict)) {
                     e.target.setStyle({ fillOpacity: 0.32, weight: 2 });
@@ -284,12 +296,16 @@ function DistrictGeoJSON({ filteredGeoData, selectedDistrict, onDistrictClick })
 
 export default function DistrictMapView({
     selectedState,
+    selectedStates = [],
     onStateClick,
     selectedDistrict,
     onDistrictClick,
     flows,
     threshold,
     mapAction,
+    compareMode = false,
+    districtA = null,
+    districtB = null,
 }) {
     const [districtGeoData, setDistrictGeoData] = useState(null);
     const [stateGeoData, setStateGeoData] = useState(null);
@@ -309,17 +325,20 @@ export default function DistrictMapView({
     }, []);
 
     const filteredGeoData = useMemo(function () {
-        if (!districtGeoData?.features?.length || !selectedState) return null;
+        if (!districtGeoData?.features?.length) return null;
+        const stateFilter = selectedStates.length > 0 ? selectedStates : (selectedState ? [selectedState] : []);
+        if (stateFilter.length === 0) return null;
+        const selectedStateSet = new Set(stateFilter);
 
         const features = districtGeoData.features.filter(function (feature) {
-            return getStateName(feature) === selectedState;
+            return selectedStateSet.has(getStateName(feature));
         });
 
         return {
             type: 'FeatureCollection',
             features,
         };
-    }, [districtGeoData, selectedState]);
+    }, [districtGeoData, selectedState, selectedStates]);
 
     const districtCentroids = useMemo(function () {
         const centroids = {};
@@ -328,8 +347,9 @@ export default function DistrictMapView({
         for (let i = 0; i < filteredGeoData.features.length; i++) {
             const feature = filteredGeoData.features[i];
             const districtName = getDistrictName(feature);
-            const normalized = normalizeDistrictName(districtName);
-            if (!normalized || centroids[normalized]) continue;
+            const stateName = getStateName(feature);
+            const normalized = getDistrictCentroidKey(stateName, districtName);
+            if (!normalizeDistrictName(districtName) || centroids[normalized]) continue;
 
             const center = getFeatureCenter(feature);
             centroids[normalized] = { lat: center.lat, lng: center.lng };
@@ -339,11 +359,37 @@ export default function DistrictMapView({
     }, [filteredGeoData]);
 
     const selectedDistrictFlows = useMemo(function () {
-        if (!selectedDistrict) return [];
+        if (!selectedState || !selectedDistrict) return [];
         return flows.filter(function (flow) {
-            return normalizeDistrictName(flow.district) === normalizeDistrictName(selectedDistrict);
+            return flow.state === selectedState && normalizeDistrictName(flow.district) === normalizeDistrictName(selectedDistrict);
         });
-    }, [flows, selectedDistrict]);
+    }, [flows, selectedDistrict, selectedState]);
+
+    const comparisonFlowTargets = useMemo(function () {
+        if (!compareMode) return [];
+        const targets = [];
+        if (districtA?.state && districtA?.district) {
+            targets.push({
+                key: 'A',
+                state: districtA.state,
+                district: districtA.district,
+                color: DISTRICT_COLORS.compareA,
+                markerColor: '#2dd4bf',
+                markerStroke: '#134e4a',
+            });
+        }
+        if (districtB?.state && districtB?.district) {
+            targets.push({
+                key: 'B',
+                state: districtB.state,
+                district: districtB.district,
+                color: DISTRICT_COLORS.compareB,
+                markerColor: '#fdba74',
+                markerStroke: '#c2410c',
+            });
+        }
+        return targets;
+    }, [compareMode, districtA, districtB]);
 
     return (
         <MapContainer
@@ -364,6 +410,7 @@ export default function DistrictMapView({
 
             <DistrictMapActionController
                 mapAction={mapAction}
+                selectedState={selectedState}
                 selectedDistrict={selectedDistrict}
                 districtCentroids={districtCentroids}
                 filteredGeoData={filteredGeoData}
@@ -375,15 +422,39 @@ export default function DistrictMapView({
             />
             <DistrictGeoJSON
                 filteredGeoData={filteredGeoData}
+                selectedState={selectedState}
                 selectedDistrict={selectedDistrict}
                 onDistrictClick={onDistrictClick}
+                compareMode={compareMode}
+                districtA={districtA}
+                districtB={districtB}
             />
-            <DistrictFlowLines
-                flows={selectedDistrictFlows}
-                threshold={threshold}
-                selectedDistrict={selectedDistrict}
-                districtCentroids={districtCentroids}
-            />
+            {compareMode ? (
+                comparisonFlowTargets.map(function (target) {
+                    return (
+                        <DistrictFlowLines
+                            key={`${target.key}-${target.state}-${target.district}`}
+                            flows={flows}
+                            threshold={threshold}
+                            selectedState={target.state}
+                            selectedDistrict={target.district}
+                            districtCentroids={districtCentroids}
+                            color={target.color}
+                            markerColor={target.markerColor}
+                            markerStroke={target.markerStroke}
+                            labelPrefix={`${target.key}: `}
+                        />
+                    );
+                })
+            ) : (
+                <DistrictFlowLines
+                    flows={selectedDistrictFlows}
+                    threshold={threshold}
+                    selectedState={selectedState}
+                    selectedDistrict={selectedDistrict}
+                    districtCentroids={districtCentroids}
+                />
+            )}
         </MapContainer>
     );
 }

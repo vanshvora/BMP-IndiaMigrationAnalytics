@@ -421,157 +421,160 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             </div>
 
             {activeTab === 'overview' ? (
-            <section className="summary-grid">
-                <SummaryStatCard
-                    title={`Total ${flowType === 'inflow' ? 'Inflow' : 'Outflow'}`}
-                    value={totalFlow.toLocaleString()}
-                    detail={relevantFlows.length ? `${relevantFlows.length.toLocaleString()} corridors above threshold` : 'No flows above threshold'}
-                    valueClassName="summary-value--accent"
-                />
-                <SummaryStatCard
-                    title="Leading reason"
-                    value={leadingReason ? leadingReason.label : 'No data'}
-                    detail={leadingReason ? formatPercent(getShare(leadingReason.value, reasonTotal)) : 'No reason records'}
-                />
-                <SummaryStatCard
-                    title="Dominant age"
-                    value={leadingAge ? leadingAge.label : 'No data'}
-                    detail={leadingAge ? formatPercent(getShare(leadingAge.value, ageTotal)) : 'No age records'}
-                />
-                <SummaryStatCard
-                    title="Literacy split"
-                    value={`${formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))} literate`}
-                    detail={`${illiteratePersons.toLocaleString()} illiterate migrants`}
-                />
-            </section>
+                <section className="summary-grid">
+                    <SummaryStatCard
+                        title={`Total ${flowType === 'inflow' ? 'Inflow' : 'Outflow'}`}
+                        value={totalFlow.toLocaleString()}
+                        detail={relevantFlows.length ? `${relevantFlows.length.toLocaleString()} corridors above threshold` : 'No flows above threshold'}
+                        valueClassName="summary-value--accent"
+                    />
+                    <SummaryStatCard
+                        title="Leading reason"
+                        value={leadingReason ? leadingReason.label : 'No data'}
+                        detail={leadingReason ? formatPercent(getShare(leadingReason.value, reasonTotal)) : 'No reason records'}
+                    />
+                    <SummaryStatCard
+                        title="Dominant age"
+                        value={leadingAge ? leadingAge.label : 'No data'}
+                        detail={leadingAge ? formatPercent(getShare(leadingAge.value, ageTotal)) : 'No age records'}
+                    />
+                    <SummaryStatCard
+                        title="Literacy split"
+                        value={`${formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))} literate`}
+                        detail={`${illiteratePersons.toLocaleString()} illiterate migrants`}
+                    />
+                </section>
             ) : null}
 
             {activeTab === 'overview' ? (
-            <section className="card counterpart-card">
-                <div className="counterpart-head">
-                    <div>
-                        <h3 className="card-title">Top / Bottom 5 {counterpartTitle}</h3>
-                        <SourceTag tableName="D01" />
-                        <p className="counterpart-subtitle">{flowType === 'inflow' ? 'Where migrants are coming from' : 'Where migrants are going to'}</p>
-                    </div>
+                <section className="card counterpart-card">
+                    <div className="counterpart-head">
+                        <div>
+                            <h3 className="card-title">Top / Bottom 5 {counterpartTitle}</h3>
+                            <SourceTag tableName="D01" />
+                            <p className="counterpart-subtitle">{flowType === 'inflow' ? 'Where migrants are coming from' : 'Where migrants are going to'}</p>
+                        </div>
 
-                    <div className="toggle-group">
-                        <button
-                            type="button"
-                            className={`toggle-btn ${counterpartMode === 'top' ? 'is-active' : ''}`}
-                            onClick={() => setCounterpartMode('top')}
-                        >
-                            Top 5
-                        </button>
-                        <button
-                            type="button"
-                            className={`toggle-btn ${counterpartMode === 'bottom' ? 'is-active' : ''}`}
-                            onClick={() => setCounterpartMode('bottom')}
-                        >
-                            Bottom 5
-                        </button>
-                    </div>
-                </div>
-
-                <div className="counterpart-layout">
-                    <div className="counterpart-list">
-                        {counterpartRows.map(function (row, index) {
-                            return (
-                                <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={`full-${row.name}`}>
-                                    <span className="list-rank">{index + 1}</span>
-                                    <div className="list-copy">
-                                        <span className="list-name">{row.name}</span>
-                                        <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
-                                    </div>
-                                    <strong className="list-value">{row.value.toLocaleString()}</strong>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    <div className="counterpart-main-column">
-                        <div className="chart-box counterpart-chart">
-                            {counterpartDisplayRows.length > 0 ? (
-                                <Bar
-                                    data={{
-                                        labels: counterpartDisplayRows.map(function (row) { return row.name; }),
-                                        datasets: [{
-                                            label: 'Migrants',
-                                            data: counterpartDisplayRows.map(function (row) { return row.value; }),
-                                            backgroundColor: chartColors.flow,
-                                            borderRadius: 8,
-                                            maxBarThickness: 42
-                                        }]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { display: false } },
-                                        scales: {
-                                            y: { beginAtZero: true },
-                                            x: { grid: { display: false } }
-                                        },
-                                        animation: false
-                                    }}
-                                />
-                            ) : (
-                                <p className="no-data">No counterpart data available.</p>
-                            )}
+                        <div className="toggle-group">
+                            <button
+                                type="button"
+                                className={`toggle-btn ${counterpartMode === 'top' ? 'is-active' : ''}`}
+                                onClick={() => setCounterpartMode('top')}
+                            >
+                                Top 5
+                            </button>
+                            <button
+                                type="button"
+                                className={`toggle-btn ${counterpartMode === 'bottom' ? 'is-active' : ''}`}
+                                onClick={() => setCounterpartMode('bottom')}
+                            >
+                                Bottom 5
+                            </button>
                         </div>
                     </div>
-                </div>
-            </section>
+
+                    <div className="counterpart-layout">
+                        <div className="counterpart-list">
+                            {counterpartRows.map(function (row, index) {
+                                return (
+                                    <div className={`list-row ${counterpartDisplayRows.some(function (item) { return item.name === row.name; }) ? 'is-highlighted' : ''}`} key={`full-${row.name}`}>
+                                        <span className="list-rank">{index + 1}</span>
+                                        <div className="list-copy">
+                                            <span className="list-name">{row.name}</span>
+                                            <span className="list-share">{formatPercent(getShare(row.value, totalFlow))}</span>
+                                        </div>
+                                        <strong className="list-value">{row.value.toLocaleString()}</strong>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="counterpart-main-column">
+                            <div className="chart-box counterpart-chart">
+                                {counterpartDisplayRows.length > 0 ? (
+                                    <Bar
+                                        data={{
+                                            labels: counterpartDisplayRows.map(function (row) { return row.name; }),
+                                            datasets: [{
+                                                label: 'Migrants',
+                                                data: counterpartDisplayRows.map(function (row) { return row.value; }),
+                                                backgroundColor: chartColors.flow,
+                                                borderRadius: 8,
+                                                maxBarThickness: 42
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: {
+                                                y: { beginAtZero: true },
+                                                x: { grid: { display: false } }
+                                            },
+                                            animation: false
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="no-data">No counterpart data available.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </section>
             ) : null}
 
             {activeTab === 'overview' ? (
-            <section className="profile-grid">
-                <div className="card compact-card duration-card">
-                    <h3 className="card-title">Male / Female</h3>
-                    <SourceTag tableName="D01" />
-                    <BreakdownPie
-                        labels={['Male', 'Female']}
-                        values={[totalMale, totalFemale]}
-                        colors={['#2563eb', '#ec4899']}
-                    />
-                    <div className="footer">
-                        <span>Male: {formatPercent(getShare(totalMale, totalFlow))}</span>
-                        <span>Female: {formatPercent(getShare(totalFemale, totalFlow))}</span>
+                <section className="profile-grid">
+                    <div className="card compact-card duration-card">
+                        <h3 className="card-title">Male / Female</h3>
+                        <SourceTag tableName="D01" />
+                        <BreakdownPie
+                            labels={['Male', 'Female']}
+                            values={[totalMale, totalFemale]}
+                            colors={['#2563eb', '#ec4899']}
+                            donut
+                        />
+                        <div className="footer">
+                            <span>Male: {formatPercent(getShare(totalMale, totalFlow))}</span>
+                            <span>Female: {formatPercent(getShare(totalFemale, totalFlow))}</span>
+                        </div>
                     </div>
-                </div>
 
-                <div className="card compact-card">
-                    <h3 className="card-title">Urban / Rural</h3>
-                    <SourceTag tableName="D01" />
-                    <BreakdownPie
-                        labels={['Urban', 'Rural']}
-                        values={[totalUrban, totalRural]}
-                        colors={['#7c3aed', '#16a34a']}
-                    />
-                    <div className="footer">
-                        <span>Urban: {formatPercent(getShare(totalUrban, totalUrban + totalRural))}</span>
-                        <span>Rural: {formatPercent(getShare(totalRural, totalUrban + totalRural))}</span>
+                    <div className="card compact-card">
+                        <h3 className="card-title">Urban / Rural</h3>
+                        <SourceTag tableName="D01" />
+                        <BreakdownPie
+                            labels={['Urban', 'Rural']}
+                            values={[totalUrban, totalRural]}
+                            colors={['#7c3aed', '#16a34a']}
+                            donut
+                        />
+                        <div className="footer">
+                            <span>Urban: {formatPercent(getShare(totalUrban, totalUrban + totalRural))}</span>
+                            <span>Rural: {formatPercent(getShare(totalRural, totalUrban + totalRural))}</span>
+                        </div>
                     </div>
-                </div>
 
-                <div className="card compact-card">
-                    <h3 className="card-title">Literate / Illiterate</h3>
-                    <SourceTag tableName="D04" />
-                    <BreakdownPie
-                        labels={['Literate', 'Illiterate']}
-                        values={[literatePersons, illiteratePersons]}
-                        colors={['#16a34a', '#ef4444']}
-                    />
-                    <div className="footer">
-                        <span>Literate: {formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))}</span>
-                        <span>Illiterate: {formatPercent(getShare(illiteratePersons, literatePersons + illiteratePersons))}</span>
+                    <div className="card compact-card">
+                        <h3 className="card-title">Literate / Illiterate</h3>
+                        <SourceTag tableName="D04" />
+                        <BreakdownPie
+                            labels={['Literate', 'Illiterate']}
+                            values={[literatePersons, illiteratePersons]}
+                            colors={['#16a34a', '#ef4444']} 
+                            donut
+                        />
+                        <div className="footer">
+                            <span>Literate: {formatPercent(getShare(literatePersons, literatePersons + illiteratePersons))}</span>
+                            <span>Illiterate: {formatPercent(getShare(illiteratePersons, literatePersons + illiteratePersons))}</span>
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
             ) : null}
 
 
             {activeTab === 'drivers' ? (
-            <section className="charts-grid">
+                <section className="charts-grid">
                     <ChartPair
                         pairIndex={0}
                         mainTitle="Duration of Stay"
@@ -621,34 +624,34 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
                         mainFooter={`Total duration records: ${durationTotal.toLocaleString()}`}
                         splitFooter="Gender split by duration"
                     />
-            </section>
+                </section>
             ) : null}
 
             {activeTab === 'overview' ? (
-            <section>
-                <MigrationInsightCard
-                    title="General Migration Insight"
-                    accent="#0f766e"
-                    badge="State overview"
-                    heroValue={totalFlow.toLocaleString()}
-                    heroLabel={`total ${flowType === 'inflow' ? 'in-migrants' : 'out-migrants'}`}
-                    summary={topCounterpart
-                        ? `${topCounterpart.name} is the strongest ${flowType === 'inflow' ? 'origin' : 'destination'} corridor with ${formatPercent(getShare(topCounterpart.value, totalFlow))} of all migrants. ${leadingReason ? `${leadingReason.label} leads migration reasons at ${topReasonShare}` : ''}${leadingAge ? `, while ${leadingAge.label.toLowerCase()} remains the biggest age band at ${topAgeShare}` : ''}. ${leadingDuration ? `Most migrants have stayed ${leadingDuration.label.toLowerCase()}, accounting for ${durationShare} of duration records.` : ''} The literacy rate among migrants is ${literacyShare}.`
-                        : 'No strong corridor is available above the current threshold.'}
-                    items={[
-                        { label: flowType === 'inflow' ? 'Top origin share' : 'Top destination share', value: topCounterpart ? `${topCounterpart.name} · ${formatPercent(getShare(topCounterpart.value, totalFlow))}` : '—' },
-                        { label: '2nd counterpart', value: counterpartRows[1] ? `${counterpartRows[1].name} · ${formatPercent(getShare(counterpartRows[1].value, totalFlow))}` : '—' },
-                        { label: 'Leading reason', value: leadingReason ? `${leadingReason.label} · ${topReasonShare}` : '—' },
-                        { label: 'Leading duration', value: leadingDuration ? `${leadingDuration.label} · ${durationShare}` : '—' },
-                        { label: 'Male migrants', value: totalMale.toLocaleString() },
-                        { label: 'Female migrants', value: totalFemale.toLocaleString() },
-                        { label: 'Female share', value: femaleShare },
-                        { label: 'Urban share', value: urbanShare },
-                        { label: 'Literacy rate', value: literacyShare },
-                        { label: 'Total corridors', value: relevantFlows.length.toLocaleString() }
-                    ]}
-                />
-            </section>
+                <section>
+                    <MigrationInsightCard
+                        title="General Migration Insight"
+                        accent="#0f766e"
+                        badge="State overview"
+                        heroValue={totalFlow.toLocaleString()}
+                        heroLabel={`total ${flowType === 'inflow' ? 'in-migrants' : 'out-migrants'}`}
+                        summary={topCounterpart
+                            ? `${topCounterpart.name} is the strongest ${flowType === 'inflow' ? 'origin' : 'destination'} corridor with ${formatPercent(getShare(topCounterpart.value, totalFlow))} of all migrants. ${leadingReason ? `${leadingReason.label} leads migration reasons at ${topReasonShare}` : ''}${leadingAge ? `, while ${leadingAge.label.toLowerCase()} remains the biggest age band at ${topAgeShare}` : ''}. ${leadingDuration ? `Most migrants have stayed ${leadingDuration.label.toLowerCase()}, accounting for ${durationShare} of duration records.` : ''} The literacy rate among migrants is ${literacyShare}.`
+                            : 'No strong corridor is available above the current threshold.'}
+                        items={[
+                            { label: flowType === 'inflow' ? 'Top origin share' : 'Top destination share', value: topCounterpart ? `${topCounterpart.name} · ${formatPercent(getShare(topCounterpart.value, totalFlow))}` : '—' },
+                            { label: '2nd counterpart', value: counterpartRows[1] ? `${counterpartRows[1].name} · ${formatPercent(getShare(counterpartRows[1].value, totalFlow))}` : '—' },
+                            { label: 'Leading reason', value: leadingReason ? `${leadingReason.label} · ${topReasonShare}` : '—' },
+                            { label: 'Leading duration', value: leadingDuration ? `${leadingDuration.label} · ${durationShare}` : '—' },
+                            { label: 'Male migrants', value: totalMale.toLocaleString() },
+                            { label: 'Female migrants', value: totalFemale.toLocaleString() },
+                            { label: 'Female share', value: femaleShare },
+                            { label: 'Urban share', value: urbanShare },
+                            { label: 'Literacy rate', value: literacyShare },
+                            { label: 'Total corridors', value: relevantFlows.length.toLocaleString() }
+                        ]}
+                    />
+                </section>
             ) : null}
 
             {(activeTab === 'demographics' || activeTab === 'drivers') ? (
@@ -730,181 +733,181 @@ export default function DataSection({ flows, flowType, selectedState, threshold 
             ) : null}
 
             {(activeTab === 'demographics' || activeTab === 'drivers') ? (
-            <section className="three-chart-row">
-                {activeTab === 'demographics' ? (
-                    <ChartPair
-                        pairIndex={1}
-                        mainTitle="Education Levels"
-                        splitTitle="Education — Gender Split"
-                        tableName="D04"
-                        infoId="education-levels"
-                        infoItems={educationInfoItems}
-                        openInfoId={openInfoId}
-                        setOpenInfoId={setOpenInfoId}
-                        mainContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: educationLabels,
-                                        datasets: [{
-                                            label: 'Persons',
-                                            data: educationValues,
-                                            backgroundColor: chartColors.education,
-                                            borderRadius: 8,
-                                            maxBarThickness: 54
-                                        }]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { display: false } },
-                                        scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        splitContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: educationLabels,
-                                        datasets: [
-                                            { label: 'Male', data: educationMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
-                                            { label: 'Female', data: educationFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
-                                        ]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { position: 'bottom' } },
-                                        scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        mainFooter={`Total: ${sumNumericValues(educationValues).toLocaleString()}`}
-                        splitFooter="Gender split by education"
-                    />
-                ) : null}
+                <section className="three-chart-row">
+                    {activeTab === 'demographics' ? (
+                        <ChartPair
+                            pairIndex={1}
+                            mainTitle="Education Levels"
+                            splitTitle="Education — Gender Split"
+                            tableName="D04"
+                            infoId="education-levels"
+                            infoItems={educationInfoItems}
+                            openInfoId={openInfoId}
+                            setOpenInfoId={setOpenInfoId}
+                            mainContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: educationLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: educationValues,
+                                                backgroundColor: chartColors.education,
+                                                borderRadius: 8,
+                                                maxBarThickness: 54
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            splitContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: educationLabels,
+                                            datasets: [
+                                                { label: 'Male', data: educationMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
+                                                { label: 'Female', data: educationFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { position: 'bottom' } },
+                                            scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            mainFooter={`Total: ${sumNumericValues(educationValues).toLocaleString()}`}
+                            splitFooter="Gender split by education"
+                        />
+                    ) : null}
 
-                {activeTab === 'drivers' ? (
-                    <ChartPair
-                        pairIndex={2}
-                        mainTitle="Economic Activity"
-                        splitTitle="Activity — Gender Split"
-                        tableName="D06"
-                        infoId="economic-activity"
-                        infoItems={activityInfoItems}
-                        openInfoId={openInfoId}
-                        setOpenInfoId={setOpenInfoId}
-                        mainContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: activityLabels,
-                                        datasets: [{
-                                            label: 'Persons',
-                                            data: activityValues,
-                                            backgroundColor: chartColors.activity,
-                                            borderRadius: 8,
-                                            maxBarThickness: 72
-                                        }]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { display: false } },
-                                        scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        splitContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: activityLabels,
-                                        datasets: [
-                                            { label: 'Male', data: activityMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 72 },
-                                            { label: 'Female', data: activityFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 72 }
-                                        ]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { position: 'bottom' } },
-                                        scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        mainFooter={`Total: ${sumNumericValues(activityValues).toLocaleString()}`}
-                        splitFooter="Gender split by activity"
-                    />
-                ) : null}
+                    {activeTab === 'drivers' ? (
+                        <ChartPair
+                            pairIndex={2}
+                            mainTitle="Economic Activity"
+                            splitTitle="Activity — Gender Split"
+                            tableName="D06"
+                            infoId="economic-activity"
+                            infoItems={activityInfoItems}
+                            openInfoId={openInfoId}
+                            setOpenInfoId={setOpenInfoId}
+                            mainContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: activityLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: activityValues,
+                                                backgroundColor: chartColors.activity,
+                                                borderRadius: 8,
+                                                maxBarThickness: 72
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            splitContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: activityLabels,
+                                            datasets: [
+                                                { label: 'Male', data: activityMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 72 },
+                                                { label: 'Female', data: activityFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 72 }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { position: 'bottom' } },
+                                            scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            mainFooter={`Total: ${sumNumericValues(activityValues).toLocaleString()}`}
+                            splitFooter="Gender split by activity"
+                        />
+                    ) : null}
 
-                {activeTab === 'demographics' ? (
-                    <ChartPair
-                        pairIndex={2}
-                        mainTitle="Marital Status"
-                        splitTitle="Marital — Gender Split"
-                        tableName="D10"
-                        infoId="marital-status"
-                        infoItems={maritalInfoItems}
-                        openInfoId={openInfoId}
-                        setOpenInfoId={setOpenInfoId}
-                        mainContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: maritalLabels,
-                                        datasets: [{
-                                            label: 'Persons',
-                                            data: maritalValues,
-                                            backgroundColor: chartColors.marital,
-                                            borderRadius: 8,
-                                            maxBarThickness: 54
-                                        }]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { display: false } },
-                                        scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        splitContent={
-                            <div className="chart-box">
-                                <Bar
-                                    data={{
-                                        labels: maritalLabels,
-                                        datasets: [
-                                            { label: 'Male', data: maritalMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
-                                            { label: 'Female', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
-                                        ]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: { legend: { position: 'bottom' } },
-                                        scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
-                                        animation: false
-                                    }}
-                                />
-                            </div>
-                        }
-                        mainFooter={`Total: ${sumNumericValues(maritalValues).toLocaleString()}`}
-                        splitFooter="Gender split by marital status"
-                    />
-                ) : null}
-            </section>
+                    {activeTab === 'demographics' ? (
+                        <ChartPair
+                            pairIndex={2}
+                            mainTitle="Marital Status"
+                            splitTitle="Marital — Gender Split"
+                            tableName="D10"
+                            infoId="marital-status"
+                            infoItems={maritalInfoItems}
+                            openInfoId={openInfoId}
+                            setOpenInfoId={setOpenInfoId}
+                            mainContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: maritalLabels,
+                                            datasets: [{
+                                                label: 'Persons',
+                                                data: maritalValues,
+                                                backgroundColor: chartColors.marital,
+                                                borderRadius: 8,
+                                                maxBarThickness: 54
+                                            }]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { display: false } },
+                                            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            splitContent={
+                                <div className="chart-box">
+                                    <Bar
+                                        data={{
+                                            labels: maritalLabels,
+                                            datasets: [
+                                                { label: 'Male', data: maritalMaleValues, backgroundColor: '#2563eb', borderRadius: 8, maxBarThickness: 54 },
+                                                { label: 'Female', data: maritalFemaleValues, backgroundColor: '#ec4899', borderRadius: 8, maxBarThickness: 54 }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: { legend: { position: 'bottom' } },
+                                            scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
+                                            animation: false
+                                        }}
+                                    />
+                                </div>
+                            }
+                            mainFooter={`Total: ${sumNumericValues(maritalValues).toLocaleString()}`}
+                            splitFooter="Gender split by marital status"
+                        />
+                    ) : null}
+                </section>
             ) : null}
         </div>
     );

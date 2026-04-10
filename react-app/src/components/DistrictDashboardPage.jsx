@@ -4,12 +4,14 @@ import DistrictMapView from './DistrictMapView';
 import DistrictDataSection from './DistrictDataSection';
 import DistrictSidebar from './DistrictSidebar';
 import DistrictMapPopup from './DistrictMapPopup';
+import DistrictComparisonDashboard from './DistrictComparisonDashboard';
 import { normalizeDistrictName } from '../utils/coordinates';
+import { selectDistrictForComparison } from '../utils/districtComparison';
 import { loadCsv } from '../utils/loadCsv';
 
 const DATA_URL = '/district_interstate_flows.csv';
 
-export default function DistrictDashboardPage() {
+export default function DistrictDashboardPage({ initialCompareMode = false }) {
     const [records, setRecords] = useState([]);
     const [districtsByState, setDistrictsByState] = useState({});
     const [selectedState, setSelectedState] = useState(null);
@@ -18,6 +20,9 @@ export default function DistrictDashboardPage() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [mapAction, setMapAction] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [compareMode, setCompareMode] = useState(Boolean(initialCompareMode));
+    const [districtA, setDistrictA] = useState(null);
+    const [districtB, setDistrictB] = useState(null);
 
     useEffect(() => {
         loadCsv(
@@ -64,13 +69,13 @@ export default function DistrictDashboardPage() {
     }, []);
 
     useEffect(() => {
-        const active = Boolean(selectedDistrict);
+        const active = compareMode ? Boolean(districtA?.district || districtB?.district) : Boolean(selectedDistrict);
         window.dispatchEvent(new CustomEvent('selection-active-change', { detail: { active } }));
 
         return function cleanupSelectionEvent() {
             window.dispatchEvent(new CustomEvent('selection-active-change', { detail: { active: false } }));
         };
-    }, [selectedDistrict]);
+    }, [compareMode, districtA, districtB, selectedDistrict]);
 
     const stateOptions = useMemo(function () {
         return Object.keys(districtsByState || {});
@@ -103,6 +108,64 @@ export default function DistrictDashboardPage() {
             .sort(function (a, b) { return b.count - a.count; });
     }, [selectedDistrict, stateDistrictRecords]);
 
+    const activeComparisonDistrict = compareMode
+        ? (districtB?.district ? districtB : (districtA?.district ? districtA : null))
+        : null;
+    const activeDistrict = compareMode ? (activeComparisonDistrict?.district || selectedDistrict) : selectedDistrict;
+    const activeState = compareMode ? (activeComparisonDistrict?.state || selectedState) : selectedState;
+    const activeMapStates = useMemo(function () {
+        if (!compareMode) return selectedState ? [selectedState] : [];
+        return Array.from(new Set([districtA?.state, districtB?.state, selectedState].filter(Boolean)));
+    }, [compareMode, districtA, districtB, selectedState]);
+    const activeMapRecords = compareMode ? records : stateDistrictRecords;
+    const activeDistrictFlows = useMemo(function () {
+        if (!activeState || !activeDistrict) return [];
+        return records
+            .filter(function (record) {
+                return record.state === activeState && normalizeDistrictName(record.district) === normalizeDistrictName(activeDistrict);
+            })
+            .sort(function (a, b) { return b.count - a.count; });
+    }, [activeDistrict, activeState, records]);
+
+    function getDistrictEntry(stateName, districtName) {
+        if (!stateName || !districtName) return null;
+        const match = (districtsByState[stateName] || []).find(function (item) {
+            return normalizeDistrictName(item.district) === normalizeDistrictName(districtName);
+        });
+        return { state: stateName, district: districtName, districtCode: Number(match?.districtCode) || 0 };
+    }
+
+    function handleCompareDistrictSelect(nextDistrict, slot) {
+        const next = selectDistrictForComparison({ districtA, districtB }, nextDistrict, slot);
+        setDistrictA(next.districtA);
+        setDistrictB(next.districtB);
+        if (nextDistrict?.state) setSelectedState(nextDistrict.state);
+        if (nextDistrict?.district) setSelectedDistrict(nextDistrict.district);
+    }
+
+    function handleDistrictClick(districtName, stateName = selectedState) {
+        if (compareMode) {
+            handleCompareDistrictSelect(getDistrictEntry(stateName, districtName));
+            return;
+        }
+        setSelectedDistrict(districtName);
+    }
+
+    function handleToggleCompareMode() {
+        if (!compareMode) {
+            setCompareMode(true);
+            setDistrictA(null);
+            setDistrictB(null);
+            setSelectedDistrict(null);
+            return;
+        }
+
+        setCompareMode(false);
+        setDistrictA(null);
+        setDistrictB(null);
+        setSelectedDistrict(null);
+    }
+
     if (loading) {
         return (
             <div className="loading">
@@ -113,6 +176,8 @@ export default function DistrictDashboardPage() {
             </div>
         );
     }
+
+    const showComparisonDashboard = compareMode && Boolean(districtA?.district) && Boolean(districtB?.district);
 
     return (
         <div className="content" style={{ '--flow-accent': '#0f766e' }}>
@@ -130,6 +195,12 @@ export default function DistrictDashboardPage() {
                                 onCollapse={() => setSidebarOpen(false)}
                                 stateOptions={stateOptions}
                                 districtOptions={districtOptions}
+                                districtsByState={districtsByState}
+                                compareMode={compareMode}
+                                onToggleCompareMode={handleToggleCompareMode}
+                                districtA={districtA}
+                                districtB={districtB}
+                                onCompareDistrictSelect={handleCompareDistrictSelect}
                             />
                         </div>
                     ) : (
@@ -161,11 +232,13 @@ export default function DistrictDashboardPage() {
                             onClick={() => {
                                 setSelectedState(null);
                                 setSelectedDistrict(null);
+                                setDistrictA(null);
+                                setDistrictB(null);
                                 setMapAction({ type: 'reset-view', timestamp: Date.now() });
                             }}
                             title="Clear state and district"
                             aria-label="Clear state and district"
-                            disabled={!selectedState && !selectedDistrict}
+                            disabled={!selectedState && !selectedDistrict && !districtA && !districtB}
                         >
                             <i className="pi pi-times" aria-hidden="true" />
                         </button>
@@ -175,40 +248,56 @@ export default function DistrictDashboardPage() {
                             onClick={() => setMapAction({ type: 'focus-selected', timestamp: Date.now() })}
                             title="Focus selected district"
                             aria-label="Focus selected district"
-                            disabled={!selectedDistrict}
+                            disabled={!activeDistrict}
                         >
                             <i className="pi pi-map-marker" aria-hidden="true" />
                         </button>
                     </div>
 
                     <DistrictMapView
-                        selectedState={selectedState}
+                        selectedState={activeState}
+                        selectedStates={activeMapStates}
                         onStateClick={(stateName) => {
                             setSelectedState(stateName);
-                            setSelectedDistrict(null);
+                            if (!compareMode) setSelectedDistrict(null);
                         }}
-                        selectedDistrict={selectedDistrict}
-                        onDistrictClick={setSelectedDistrict}
-                        flows={stateDistrictRecords}
+                        selectedDistrict={activeDistrict}
+                        onDistrictClick={handleDistrictClick}
+                        flows={activeMapRecords}
                         threshold={threshold}
                         mapAction={mapAction}
+                        compareMode={compareMode}
+                        districtA={districtA}
+                        districtB={districtB}
                     />
 
                     {/* District map preview popup — right side, vertically centered */}
                     <DistrictMapPopup
-                        selectedState={selectedState}
-                        selectedDistrict={selectedDistrict}
+                        selectedState={activeState}
+                        selectedDistrict={activeDistrict}
+                        compareMode={compareMode}
+                        districtA={districtA}
+                        districtB={districtB}
                     />
                 </main>
             </div>
 
             <div className="data-area">
-                <DistrictDataSection
-                    selectedState={selectedState}
-                    selectedDistrict={selectedDistrict}
-                    districtFlows={districtFlows}
-                    threshold={threshold}
-                />
+                {showComparisonDashboard ? (
+                    <DistrictComparisonDashboard
+                        records={records}
+                        threshold={threshold}
+                        districtA={districtA}
+                        districtB={districtB}
+                    />
+                ) : (
+                    <DistrictDataSection
+                        selectedState={activeState}
+                        selectedDistrict={activeDistrict}
+                        districtFlows={compareMode ? activeDistrictFlows : districtFlows}
+                        threshold={threshold}
+                    />
+                )}
             </div>
         </div>
     );
