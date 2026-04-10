@@ -77,12 +77,19 @@ export default function AIChatPage() {
 
     useEffect(() => {
         fetch(`${API_BASE}/api/context/options`)
-            .then((res) => res.json())
+            .then((res) => {
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                return res.json();
+            })
             .then((data) => {
+                console.log('Context loaded:', data?.states?.length, 'states');
                 setStates(Array.isArray(data?.states) ? data.states : []);
                 setDistrictsByState(data?.districtsByState || {});
             })
-            .catch(() => {
+            .catch((error) => {
+                console.error('Failed to load context:', error);
                 setStates([]);
                 setDistrictsByState({});
             });

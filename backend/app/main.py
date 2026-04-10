@@ -12,10 +12,9 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .db import DatabaseManager
-from .faq import FAQ_ITEMS
 from .llm_provider import LLMInitializationError, build_chat_model
 from .retrieval import LexicalRetriever, build_default_documents
-from .schemas import ChatRequest, ChatResponse, FAQItem, HealthResponse
+from .schemas import ChatRequest, ChatResponse, HealthResponse
 from .sql_agent import ChatOrchestrator
 
 
@@ -32,30 +31,6 @@ app.add_middleware(
 )
 
 
-class InMemoryRateLimiter:
-    def __init__(self, max_requests_per_minute: int) -> None:
-        self.max_requests_per_minute = max_requests_per_minute
-        self._lock = Lock()
-        self._hits: dict[str, deque[float]] = {}
-
-    def allow(self, key: str) -> tuple[bool, int]:
-        now = time.time()
-        window_start = now - 60.0
-
-        with self._lock:
-            queue = self._hits.setdefault(key, deque())
-            while queue and queue[0] < window_start:
-                queue.popleft()
-
-            if len(queue) >= self.max_requests_per_minute:
-                retry_after = max(1, int(60 - (now - queue[0])))
-                return False, retry_after
-
-            queue.append(now)
-            return True, 0
-
-
-rate_limiter = InMemoryRateLimiter(settings.chat_rate_limit_per_minute)
 
 
 def _build_orchestrator() -> tuple[ChatOrchestrator, str | None]:
@@ -100,9 +75,6 @@ def health() -> HealthResponse:
     )
 
 
-@app.get(f"{settings.api_prefix}/faq", response_model=list[FAQItem])
-def faq() -> list[FAQItem]:
-    return [FAQItem(**item) for item in FAQ_ITEMS]
 
 
 @app.get(f"{settings.api_prefix}/context/options")
@@ -119,16 +91,6 @@ def schema() -> dict:
 
 @app.post(f"{settings.api_prefix}/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, request: Request) -> ChatResponse:
-    client_ip = request.client.host if request.client and request.client.host else "unknown"
-    allowed, retry_after = rate_limiter.allow(client_ip)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "Rate limit exceeded. Please retry later.",
-                "retry_after_seconds": retry_after,
-            },
-        )
 
     orchestrator: ChatOrchestrator = app.state.orchestrator
     return orchestrator.chat(payload)

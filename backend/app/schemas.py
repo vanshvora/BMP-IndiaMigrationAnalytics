@@ -38,11 +38,6 @@ class ChatResponse(BaseModel):
     error: str | None = None
 
 
-class FAQItem(BaseModel):
-    question: str
-    answer: str
-
-
 class HealthResponse(BaseModel):
     ok: bool
     db_ready: bool

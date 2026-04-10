@@ -4,9 +4,9 @@ import difflib
 import hashlib
 import json
 import re
-import time
-from collections import OrderedDict
-from threading import Lock
+import hashlib
+import json
+import re
 from typing import Any
 
 import sqlglot
@@ -14,7 +14,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from .config import Settings
 from .db import DatabaseManager
-from .faq import match_faq
 from .prompting import build_rag_answer_prompt, build_sql_answer_prompt, build_sql_prompt
 from .retrieval import LexicalRetriever
 from .schemas import ChatContext, ChatRequest, ChatResponse, Citation
@@ -593,46 +592,6 @@ class ChatOrchestrator:
         self.retriever = retriever
         self.llm = llm
         self.llm_error = llm_error
-        self._cache_lock = Lock()
-        self._cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
-
-    def _cache_key(self, request: ChatRequest) -> str:
-        payload = {
-            "message": request.message,
-            "context": request.context.model_dump(exclude_none=True) if request.context else {},
-            "history": [turn.model_dump() for turn in request.history[-self.settings.max_history_turns :]],
-        }
-        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True)
-        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-    def _cache_get(self, key: str) -> ChatResponse | None:
-        now = time.time()
-        with self._cache_lock:
-            item = self._cache.get(key)
-            if not item:
-                return None
-
-            expires_at, payload = item
-            if now > expires_at:
-                self._cache.pop(key, None)
-                return None
-
-            # refresh LRU position
-            self._cache.move_to_end(key)
-            return ChatResponse.model_validate(payload)
-
-    def _cache_set(self, key: str, response: ChatResponse) -> None:
-        ttl = max(1, self.settings.chat_cache_ttl_seconds)
-        expires_at = time.time() + ttl
-        payload = response.model_dump()
-
-        with self._cache_lock:
-            self._cache[key] = (expires_at, payload)
-            self._cache.move_to_end(key)
-
-            max_entries = max(1, self.settings.chat_cache_max_entries)
-            while len(self._cache) > max_entries:
-                self._cache.popitem(last=False)
 
     def _invoke_llm(self, prompt: str) -> str:
         if not self.llm:
@@ -704,50 +663,29 @@ class ChatOrchestrator:
         return prompts[:4]
 
     def chat(self, request: ChatRequest) -> ChatResponse:
-        cache_key = self._cache_key(request)
-        cached = self._cache_get(cache_key)
-        if cached:
-            return cached
-
-        def finalize(response: ChatResponse) -> ChatResponse:
-            self._cache_set(cache_key, response)
-            return response
-
         smalltalk = _smalltalk_response(request.message)
         if smalltalk:
-            return finalize(ChatResponse(
+            return ChatResponse(
                 answer=smalltalk,
                 route="smalltalk",
                 follow_ups=self._follow_ups(
                     request.context.selected_state if request.context else None,
                     request.context.selected_district if request.context else None,
                 ),
-            ))
+            )
 
         rephrase = _needs_rephrase_response(request.message)
         if rephrase:
-            return finalize(ChatResponse(
+            return ChatResponse(
                 answer=rephrase,
                 route="clarify",
                 follow_ups=self._follow_ups(
                     request.context.selected_state if request.context else None,
                     request.context.selected_district if request.context else None,
                 ),
-            ))
+            )
 
         route = self._route_question(request.message)
-        faq_hit = match_faq(request.message)
-        if route == "rag" and faq_hit and faq_hit["score"] >= 0.62:
-            item = faq_hit["item"]
-            return finalize(ChatResponse(
-                answer=item["answer"],
-                route="faq",
-                citations=[Citation(label="FAQ", detail=item["question"])],
-                follow_ups=self._follow_ups(
-                    request.context.selected_state if request.context else None,
-                    request.context.selected_district if request.context else None,
-                ),
-            ))
 
         if route == "rag":
             docs = self.retriever.retrieve(request.message, top_k=4)
@@ -760,16 +698,16 @@ class ChatOrchestrator:
                 answer = self._invoke_llm(rag_prompt)
             except Exception as exc:
                 answer = _deterministic_rag_answer(request.message, docs)
-                return finalize(ChatResponse(
+                return ChatResponse(
                     answer=answer,
                     route="rag",
                     citations=[Citation(label="RAG Fallback", detail=str(exc))],
                     follow_ups=[],
                     error=str(exc),
-                ))
+                )
 
             citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-            return finalize(ChatResponse(
+            return ChatResponse(
                 answer=answer.strip(),
                 route="rag",
                 citations=citations,
@@ -777,7 +715,7 @@ class ChatOrchestrator:
                     request.context.selected_state if request.context else None,
                     request.context.selected_district if request.context else None,
                 ),
-            ))
+            )
 
         schema = self.db.schema_summary()
         allowed_tables = set(self.db.list_tables())
@@ -818,7 +756,7 @@ class ChatOrchestrator:
                 )
                 answer = self._invoke_llm(rag_prompt)
                 citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-                return finalize(ChatResponse(
+                return ChatResponse(
                     answer=answer.strip(),
                     route="rag-fallback",
                     citations=citations,
@@ -827,7 +765,7 @@ class ChatOrchestrator:
                         request.context.selected_district if request.context else None,
                     ),
                     error=str(exc),
-                ))
+                )
 
             if _is_quota_error(exc):
                 quota_message = (
@@ -835,7 +773,7 @@ class ChatOrchestrator:
                     "Update billing/quota or switch provider key. "
                     "For now, ask direct metric questions with selected state/district to use deterministic SQL."
                 )
-                return finalize(ChatResponse(
+                return ChatResponse(
                     answer=quota_message,
                     route="sql",
                     citations=[Citation(label="LLM Quota", detail=str(exc))],
@@ -844,9 +782,9 @@ class ChatOrchestrator:
                         request.context.selected_district if request.context else None,
                     ),
                     error=str(exc),
-                ))
+                )
 
-            return finalize(ChatResponse(
+            return ChatResponse(
                 answer=(
                     "Please ask migration-related questions only. You can ask about states, districts, gender split, "
                     "rural versus urban share, migration reasons, or totals."
@@ -855,11 +793,11 @@ class ChatOrchestrator:
                 citations=[],
                 follow_ups=[],
                 error=str(exc),
-            ))
+            )
 
         preview = rows[: self.settings.max_rows_preview]
         if not preview:
-            return finalize(ChatResponse(
+            return ChatResponse(
                 answer=_deterministic_sql_answer(preview),
                 route=route,
                 sql=validated_sql,
@@ -869,7 +807,7 @@ class ChatOrchestrator:
                     request.context.selected_state if request.context else None,
                     request.context.selected_district if request.context else None,
                 ),
-            ))
+            )
 
         answer_prompt = build_sql_answer_prompt(
             question=request.message,
@@ -899,7 +837,7 @@ class ChatOrchestrator:
         citations = [Citation(label=f"table:{table}") for table in used_tables] + extra_citations
         if rule_plan:
             citations.append(Citation(label="planner:rule-based", detail=reason))
-        return finalize(ChatResponse(
+        return ChatResponse(
             answer=answer,
             route=route,
             sql=validated_sql,
@@ -909,4 +847,4 @@ class ChatOrchestrator:
                 request.context.selected_state if request.context else None,
                 request.context.selected_district if request.context else None,
             ),
-        ))
+        )
