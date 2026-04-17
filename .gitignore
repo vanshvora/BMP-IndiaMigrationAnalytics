@@ -48,3 +48,4 @@ ehthumbs.db
  
 #map cache
 .map_cache/
+data-cleaning/cultural_photos.py
