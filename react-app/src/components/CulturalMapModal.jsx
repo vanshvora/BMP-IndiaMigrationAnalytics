@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import './CulturalMapModal.css';
 import { lockPageScroll } from './mapPopupScrollLock';
-import { CULTURAL_CATEGORIES, getCulturalImageCandidates, getCulturalStateDisplayName } from '../utils/culturalAssets';
+import { CULTURAL_CATEGORIES, getCulturalImageCandidates } from '../utils/culturalAssets';
 import { getCulturalContentForState } from '../data/culturalContent';
 
 function CulturalImage({ candidates, alt, className = '', onOpen }) {
@@ -81,22 +81,24 @@ function CulturalSection({ category, categoryContent, stateDisplayName, candidat
 export default function CulturalMapModal({ isOpen, stateName, mapPreviewSrc, onClose }) {
     const [lightbox, setLightbox] = useState(null);
 
-    const stateDisplayName = useMemo(function getDisplayName() {
-        return getCulturalStateDisplayName(stateName);
-    }, [stateName]);
-
     const stateContent = useMemo(function buildCulturalContent() {
         return getCulturalContentForState(stateName);
     }, [stateName]);
+
+    const stateDisplayName = stateContent.stateDisplayName || String(stateName || '').trim() || 'Selected State';
 
     const imagesByCategory = useMemo(function getImagesByCategory() {
         const imageIndex = {};
         for (let i = 0; i < CULTURAL_CATEGORIES.length; i++) {
             const category = CULTURAL_CATEGORIES[i];
-            imageIndex[category.id] = getCulturalImageCandidates(stateName, category.id);
+            imageIndex[category.id] = getCulturalImageCandidates(
+                stateName,
+                category.id,
+                stateContent.categories?.[category.id]?.image
+            );
         }
         return imageIndex;
-    }, [stateName]);
+    }, [stateName, stateContent.categories]);
 
     useEffect(() => {
         if (!isOpen) return undefined;
