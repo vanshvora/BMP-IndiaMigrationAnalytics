@@ -26,27 +26,22 @@ export const CULTURAL_CATEGORIES = [
     {
         id: 'dance',
         title: 'Dance',
-        noteLabel: 'Signature Form',
     },
     {
         id: 'dress',
         title: 'Dress',
-        noteLabel: 'Key Garment',
     },
     {
         id: 'festival',
         title: 'Festival',
-        noteLabel: 'Celebration Context',
     },
     {
         id: 'food',
         title: 'Food',
-        noteLabel: 'Dish Note',
     },
     {
         id: 'heritage',
         title: 'Heritage',
-        noteLabel: 'Heritage Note',
     },
 ];
 
@@ -87,11 +82,22 @@ function toPublicAssetPath(folderName, fileName) {
     return `/cultural_photos/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}`;
 }
 
-export function getCulturalImageCandidates(stateName, categoryId) {
+export function getCulturalImageCandidates(stateName, categoryId, preferredImageFile = null) {
     const folderName = getCulturalStateFolder(stateName);
     if (!folderName || !categoryId) return [];
 
-    return CULTURAL_IMAGE_EXTENSIONS.map(function toCandidate(extension) {
-        return toPublicAssetPath(folderName, `${categoryId}.${extension}`);
+    const candidates = [];
+
+    if (preferredImageFile) {
+        candidates.push(toPublicAssetPath(folderName, preferredImageFile));
+    }
+
+    for (let i = 0; i < CULTURAL_IMAGE_EXTENSIONS.length; i++) {
+        const extension = CULTURAL_IMAGE_EXTENSIONS[i];
+        candidates.push(toPublicAssetPath(folderName, `${categoryId}.${extension}`));
+    }
+
+    return candidates.filter(function dedupe(value, index, array) {
+        return value && array.indexOf(value) === index;
     });
 }
