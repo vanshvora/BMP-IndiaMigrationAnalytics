@@ -1,16 +1,3 @@
-const TITLE_WORD_OVERRIDES = {
-    nct: 'NCT',
-};
-
-const STATE_DISPLAY_ALIASES = {
-    'NCT OF DELHI': 'Delhi',
-    'JAMMU & KASHMIR': 'Jammu and Kashmir',
-    'ANDAMAN & NICOBAR ISLANDS': 'Andaman and Nicobar Islands',
-    'DADRA & NAGAR HAVELI': 'Dadra and Nagar Haveli',
-    'DAMAN & DIU': 'Daman and Diu',
-    'DADRA & NAGAR HAVELI AND DAMAN & DIU': 'Dadra and Nagar Haveli and Daman and Diu',
-};
-
 const STATE_FOLDER_ALIASES = {
     'NCT OF DELHI': 'Delhi',
     'JAMMU & KASHMIR': 'Jammu and Kashmir',
@@ -23,56 +10,32 @@ const STATE_FOLDER_ALIASES = {
 const CULTURAL_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
 export const CULTURAL_CATEGORIES = [
-    {
-        id: 'dance',
-        title: 'Dance',
-    },
-    {
-        id: 'dress',
-        title: 'Dress',
-    },
-    {
-        id: 'festival',
-        title: 'Festival',
-    },
-    {
-        id: 'food',
-        title: 'Food',
-    },
-    {
-        id: 'heritage',
-        title: 'Heritage',
-    },
+    { id: 'dance', title: 'Dance' },
+    { id: 'dress', title: 'Dress' },
+    { id: 'festival', title: 'Festival' },
+    { id: 'food', title: 'Food' },
+    { id: 'heritage', title: 'Heritage' },
 ];
-
-function titleCaseWord(word) {
-    const normalized = word.toLowerCase();
-    if (TITLE_WORD_OVERRIDES[normalized]) return TITLE_WORD_OVERRIDES[normalized];
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
 
 function toTitleCase(value) {
     if (!value) return '';
     return String(value)
         .split(/\s+/)
         .filter(Boolean)
-        .map(function formatToken(token) {
+        .map(function (token) {
             if (token === '&') return '&';
             return token
                 .split('-')
-                .map(titleCaseWord)
+                .map(function (word) {
+                    const lower = word.toLowerCase();
+                    return lower.charAt(0).toUpperCase() + lower.slice(1);
+                })
                 .join('-');
         })
         .join(' ');
 }
 
-export function getCulturalStateDisplayName(stateName) {
-    if (!stateName) return '';
-    if (STATE_DISPLAY_ALIASES[stateName]) return STATE_DISPLAY_ALIASES[stateName];
-    return toTitleCase(stateName);
-}
-
-export function getCulturalStateFolder(stateName) {
+function getCulturalStateFolder(stateName) {
     if (!stateName) return null;
     if (STATE_FOLDER_ALIASES[stateName]) return STATE_FOLDER_ALIASES[stateName];
     return toTitleCase(stateName);

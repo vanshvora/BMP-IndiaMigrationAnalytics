@@ -84,7 +84,7 @@ export default function AIChatPage() {
                 return res.json();
             })
             .then((data) => {
-                console.log('Context loaded:', data?.states?.length, 'states');
+
                 setStates(Array.isArray(data?.states) ? data.states : []);
                 setDistrictsByState(data?.districtsByState || {});
             })
