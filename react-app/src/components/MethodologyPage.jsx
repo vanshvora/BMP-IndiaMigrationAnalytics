@@ -8,7 +8,7 @@ export default function MethodologyPage() {
                     <span className="info-pill">Methodological Note</span>
                     <h1>Methodology and Data Framework</h1>
                     <p>
-                        This portal uses Census 2011 migration D-series datasets transformed into analysis-ready CSVs.
+                        This project uses Census 2011 migration D-series datasets transformed into analysis-ready CSVs.
                         The methodological intent is to provide transparent exploratory analytics across state and district
                         migration contexts, with clear limits on interpretation.
                     </p>
@@ -41,9 +41,24 @@ export default function MethodologyPage() {
                                 <td>Driver composition (work, business, marriage, education, others)</td>
                             </tr>
                             <tr>
-                                <td>D04, D06, D10</td>
-                                <td>Education, activity, marital status</td>
-                                <td>Demographic and socio-economic profiling of migration groups</td>
+                                <td>D04</td>
+                                <td>Education levels of migrants</td>
+                                <td>Educational composition and literacy profile of migration groups</td>
+                            </tr>
+                            <tr>
+                                <td>D06</td>
+                                <td>Economic activity of migrants</td>
+                                <td>Main worker, marginal worker, and non-worker profile analysis</td>
+                            </tr>
+                            <tr>
+                                <td>D10</td>
+                                <td>Marital status of migrants</td>
+                                <td>Marital-status composition across selected migration groups</td>
+                            </tr>
+                            <tr>
+                                <td>D12</td>
+                                <td>Age classification of migrants</td>
+                                <td>Age-profile analysis across children, youth, working-age, elderly, and not-stated groups</td>
                             </tr>
                             <tr>
                                 <td>District Flow Tables</td>
@@ -61,6 +76,7 @@ export default function MethodologyPage() {
                             <li>Raw D-series extracts are cleaned and normalized in preprocessing scripts.</li>
                             <li>Numeric indicators are validated for parsing consistency and empty-row handling.</li>
                             <li>State and district naming are normalized to improve join and mapping reliability.</li>
+                            <li>D12 age columns are grouped into readable age bands for state and comparison views.</li>
                             <li>Frontend dashboards consume transformed CSVs for interactive computation.</li>
                             <li>AI layer queries backend DuckDB tables and returns scoped results with citations.</li>
                         </ol>
@@ -80,14 +96,14 @@ export default function MethodologyPage() {
                 <section className="info-card">
                     <h2 className="info-section-title">Coverage and Limitations</h2>
                     <p className="info-subtitle">
-                        The portal emphasizes transparent exploratory analytics and should be interpreted with
+                        The dashboard emphasizes transparent exploratory analytics and should be interpreted with
                         methodological caution.
                     </p>
                     <ul className="info-list">
                         <li>Reference period corresponds to Census 2011 D-series structure.</li>
                         <li>Certain categories represent self-reported classifications and may include non-sampling noise.</li>
                         <li>Inter-state and district corridors may be sensitive to administrative naming differences.</li>
-                        <li>This portal does not estimate causal effects; it summarizes observed distributions.</li>
+                        <li>This dashboard does not estimate causal effects; it summarizes observed distributions.</li>
                     </ul>
                 </section>
             </div>

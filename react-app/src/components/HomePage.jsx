@@ -35,12 +35,12 @@ const FEATURE_CARDS = [
     },
     {
         title: 'Comparative Analytics',
-        detail: 'Contrast migration indicators between two states for policy and planning decisions.',
+        detail: 'Compare migration indicators between two states or districts using shared metrics.',
         icon: 'pi pi-sliders-h',
     },
     {
         title: 'AI Insight Assistant',
-        detail: 'Query the portal in natural language and receive structured, cited analytical outputs.',
+        detail: 'Ask natural-language questions and receive SQL-backed summaries from available tables.',
         icon: 'pi pi-comments',
     },
 ];
@@ -83,11 +83,11 @@ export default function HomePage({ onNavigate }) {
             <div className="home-shell">
                 <section className="home-hero home-surface">
                     <div className="home-hero-content">
-                        <p className="home-kicker">India Migration Analytics Portal</p>
-                        <h1>Institutional-grade migration intelligence for research, policy, and planning.</h1>
+                        <p className="home-kicker">India Migration Analytics</p>
+                        <h1>Explore Census 2011 migration patterns through interactive dashboards.</h1>
                         <p>
-                            Explore Census migration patterns through state and district dashboards, structured charts,
-                            and a contextual AI assistant designed for evidence-led interpretation.
+                            Study state and district migration flows with maps, charts, tables, and an AI assistant
+                            that answers questions from the available Census D-series data.
                         </p>
                         <div className="home-hero-actions">
                             <button type="button" className="home-btn home-btn-primary" onClick={() => onNavigate('state')}>
@@ -156,8 +156,8 @@ export default function HomePage({ onNavigate }) {
 
                 <section className="home-section home-surface">
                     <div className="home-section-head">
-                        <h2>Core Portal Capabilities</h2>
-                        <p>Designed for users who need transparent, defensible migration analysis workflows.</p>
+                        <h2>Core Dashboard Capabilities</h2>
+                        <p>Built for exploring cleaned Census migration tables through clear visual summaries.</p>
                     </div>
                     <div className="home-features-grid">
                         {FEATURE_CARDS.map((feature, index) => (
@@ -174,7 +174,7 @@ export default function HomePage({ onNavigate }) {
 
                 <section className="home-section home-guided home-surface">
                     <div className="home-section-head">
-                        <h2>How To Use The Portal</h2>
+                        <h2>How To Use The Dashboard</h2>
                         <p>Three-step analytical workflow for first-time and repeat users.</p>
                     </div>
 
@@ -199,7 +199,7 @@ export default function HomePage({ onNavigate }) {
 
                         <div className="home-demo-board">
                             <div className="demo-toolbar">
-                                <span>Portal Walkthrough</span>
+                                <span>Dashboard Walkthrough</span>
                                 <span className="demo-pill">{activeStep.label}</span>
                             </div>
                             <div className="demo-canvas">
@@ -242,12 +242,12 @@ export default function HomePage({ onNavigate }) {
                     </div>
                     <div className="home-audience-grid">
                         <article className="home-audience-card">
-                            <h3>Policy Teams</h3>
-                            <p>Identify migration pressure zones and corridor dependencies for planning interventions.</p>
+                            <h3>Project Reviewers</h3>
+                            <p>Understand the dataset, analysis flow, and major migration patterns in one place.</p>
                         </article>
                         <article className="home-audience-card">
                             <h3>Academic Researchers</h3>
-                            <p>Use structured migration indicators to frame comparative or explanatory analysis.</p>
+                            <p>Use structured migration indicators to frame comparative analysis.</p>
                         </article>
                         <article className="home-audience-card">
                             <h3>Students and Analysts</h3>
@@ -255,7 +255,7 @@ export default function HomePage({ onNavigate }) {
                         </article>
                         <article className="home-audience-card">
                             <h3>Media and Public Communication</h3>
-                            <p>Transform complex migration patterns into coherent, evidence-backed narratives.</p>
+                            <p>Turn complex migration tables into clearer visual explanations.</p>
                         </article>
                     </div>
                 </section>
