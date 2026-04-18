@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-import time
-from collections import deque
-from threading import Lock
-
 from fastapi import FastAPI
-from fastapi import HTTPException
-from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -90,8 +84,7 @@ def schema() -> dict:
 
 
 @app.post(f"{settings.api_prefix}/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, request: Request) -> ChatResponse:
-
+def chat(payload: ChatRequest) -> ChatResponse:
     orchestrator: ChatOrchestrator = app.state.orchestrator
     return orchestrator.chat(payload)
 

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import difflib
-import hashlib
-import json
-import re
-import hashlib
 import json
 import re
 from typing import Any
@@ -16,7 +12,7 @@ from .config import Settings
 from .db import DatabaseManager
 from .prompting import build_rag_answer_prompt, build_sql_answer_prompt, build_sql_prompt
 from .retrieval import LexicalRetriever
-from .schemas import ChatContext, ChatRequest, ChatResponse, Citation
+from .schemas import ChatContext, ChatRequest, ChatResponse, ChatTurn, Citation
 
 
 class SQLValidationError(RuntimeError):
@@ -156,6 +152,35 @@ def _canonicalize_question(question: str) -> str:
         canonical = re.sub(pattern, replacement, canonical)
 
     return canonical
+
+
+def _canonicalize_follow_up(question: str, history: list[ChatTurn]) -> str:
+    canonical = _canonicalize_question(question)
+    if "out-migration" not in canonical and "in-migration" not in canonical:
+        return canonical
+
+    is_short_follow_up = bool(
+        re.search(r"\b(what about|how about|and|what of)\b", canonical)
+    ) or len(canonical.split()) <= 5
+    if not is_short_follow_up:
+        return canonical
+
+    previous_user = next(
+        (turn.content for turn in reversed(history) if turn.role == "user"),
+        "",
+    )
+    previous = _canonicalize_question(previous_user)
+    had_top_state_intent = (
+        ("top" in previous or "highest" in previous or "largest" in previous)
+        and "state" in previous
+        and ("migration" in previous or "migrants" in previous)
+    )
+    if not had_top_state_intent:
+        return canonical
+
+    if "out-migration" in canonical:
+        return "top origin states by total migrants"
+    return "top destination states by total migrants"
 
 
 def _is_quota_error(exc: Exception) -> bool:
@@ -721,7 +746,7 @@ class ChatOrchestrator:
         allowed_tables = set(self.db.list_tables())
         limited_history = request.history[-self.settings.max_history_turns :]
         state_names = self.db.context_options().get("states", [])
-        canonical_question = _canonicalize_question(request.message)
+        canonical_question = _canonicalize_follow_up(request.message, limited_history)
         sql_prompt = build_sql_prompt(
             schema_summary=schema,
             question=request.message,
@@ -732,18 +757,24 @@ class ChatOrchestrator:
         )
 
         rule_plan = _rule_based_sql(request.message, request.context, state_names)
+        planner_label = "llm"
 
         try:
-            if rule_plan:
-                sql, reason = rule_plan
-            else:
+            try:
                 plan_raw = self._invoke_llm(sql_prompt)
                 plan = _extract_json(plan_raw)
                 sql = str(plan.get("sql", "")).strip()
                 reason = str(plan.get("reason", "")).strip()
-            if not sql:
-                raise SQLValidationError("Planner returned empty SQL.")
-            validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
+                if not sql:
+                    raise SQLValidationError("Planner returned empty SQL.")
+                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
+            except Exception:
+                if not rule_plan:
+                    raise
+                sql, reason = rule_plan
+                planner_label = "rule-based"
+                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
+
             validated_sql = _ensure_limit(validated_sql, self.settings.sql_default_limit)
             rows = self.db.execute_query(validated_sql)
         except Exception as exc:
@@ -835,7 +866,7 @@ class ChatOrchestrator:
             answer = deterministic_answer
 
         citations = [Citation(label=f"table:{table}") for table in used_tables] + extra_citations
-        if rule_plan:
+        if planner_label == "rule-based":
             citations.append(Citation(label="planner:rule-based", detail=reason))
         return ChatResponse(
             answer=answer,
