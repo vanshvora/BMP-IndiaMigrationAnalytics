@@ -78,7 +78,18 @@ def _validate_select_sql(sql: str, allowed_tables: set[str]) -> tuple[str, list[
     except Exception as exc:
         raise SQLValidationError(f"SQL parse failed: {exc}") from exc
 
-    referenced = sorted({table.name for table in parsed.find_all(sqlglot.exp.Table) if table.name})
+    cte_names = {
+        cte.alias_or_name
+        for cte in parsed.find_all(sqlglot.exp.CTE)
+        if cte.alias_or_name
+    }
+    referenced = sorted(
+        {
+            table.name
+            for table in parsed.find_all(sqlglot.exp.Table)
+            if table.name and table.name not in cte_names
+        }
+    )
     if not referenced:
         raise SQLValidationError("SQL does not reference any table.")
 
@@ -308,43 +319,6 @@ def _rule_based_sql(question: str, context: ChatContext | None, state_names: lis
             "Rule-based planner: top origin states by D01 totals.",
         )
 
-    origin_state = state_from_question or selected_state
-    destination_state = destination_from_question or selected_state
-
-    if origin_state and destination_state and asks_total_migrants:
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, AreaName AS destination_state, "
-                "SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE BirthPlace_norm = '{origin_state}' AND AreaName_norm = '{destination_state}' "
-                "GROUP BY BirthPlace, AreaName"
-            ).format(origin_state=origin_state, destination_state=destination_state),
-            "Rule-based planner: total migrants between specified origin and destination states.",
-        )
-
-    if origin_state and asks_total_migrants and ("from" in lowered or "out" in lowered):
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE BirthPlace_norm = '{state_norm}' "
-                "GROUP BY BirthPlace"
-            ).format(state_norm=origin_state),
-            "Rule-based planner: total migrants from selected origin state.",
-        )
-
-    if destination_state and asks_total_migrants and ("to" in lowered or "into" in lowered):
-        return (
-            (
-                "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE AreaName_norm = '{state_norm}' "
-                "GROUP BY AreaName"
-            ).format(state_norm=destination_state),
-            "Rule-based planner: total migrants to selected destination state.",
-        )
-
     if asks_top and ("origin region" in lowered or "origin regions" in lowered or "origin" in lowered):
         if selected_district:
             return (
@@ -402,6 +376,93 @@ def _rule_based_sql(question: str, context: ChatContext | None, state_names: lis
                 "LIMIT {top_n}"
             ).format(state_norm=selected_state, top_n=top_n),
             "Rule-based planner: top districts for selected state.",
+        )
+
+    if selected_state and "compare" in lowered and "national average" in lowered:
+        return (
+            (
+                "WITH state_totals AS ("
+                "SELECT state, state_norm, SUM(count) AS total_migrants "
+                "FROM district_interstate_flows "
+                "GROUP BY state, state_norm"
+                "), national AS ("
+                "SELECT AVG(total_migrants) AS national_average_total_migrants "
+                "FROM state_totals"
+                ") "
+                "SELECT state, total_migrants, national_average_total_migrants, "
+                "total_migrants - national_average_total_migrants AS difference_from_average, "
+                "total_migrants * 100.0 / national_average_total_migrants AS percent_of_average "
+                "FROM state_totals, national "
+                "WHERE state_norm = '{state_norm}'"
+            ).format(state_norm=selected_state),
+            "Rule-based planner: selected state compared with national average state total.",
+        )
+
+    if selected_state and ("insight" in lowered or "important" in lowered or "summarize" in lowered):
+        return (
+            (
+                "WITH state_summary AS ("
+                "SELECT state, SUM(count) AS total_migrants, SUM(male) AS male_total, "
+                "SUM(female) AS female_total, SUM(rural) AS rural_total, SUM(urban) AS urban_total "
+                "FROM district_interstate_flows "
+                "WHERE state_norm = '{state_norm}' "
+                "GROUP BY state"
+                "), top_district AS ("
+                "SELECT district AS top_district, SUM(count) AS top_district_migrants "
+                "FROM district_interstate_flows "
+                "WHERE state_norm = '{state_norm}' "
+                "GROUP BY district "
+                "ORDER BY top_district_migrants DESC "
+                "LIMIT 1"
+                "), top_origin AS ("
+                "SELECT origin AS top_origin, SUM(count) AS top_origin_migrants "
+                "FROM district_interstate_flows "
+                "WHERE state_norm = '{state_norm}' "
+                "GROUP BY origin "
+                "ORDER BY top_origin_migrants DESC "
+                "LIMIT 1"
+                ") "
+                "SELECT * FROM state_summary, top_district, top_origin"
+            ).format(state_norm=selected_state),
+            "Rule-based planner: selected state key migration insights.",
+        )
+
+    origin_state = state_from_question or selected_state
+    destination_state = destination_from_question or selected_state
+    has_explicit_flow_location = bool(state_from_question or destination_from_question)
+
+    if has_explicit_flow_location and origin_state and destination_state and asks_total_migrants:
+        return (
+            (
+                "SELECT BirthPlace AS origin_state, AreaName AS destination_state, "
+                "SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE BirthPlace_norm = '{origin_state}' AND AreaName_norm = '{destination_state}' "
+                "GROUP BY BirthPlace, AreaName"
+            ).format(origin_state=origin_state, destination_state=destination_state),
+            "Rule-based planner: total migrants between specified origin and destination states.",
+        )
+
+    if origin_state and asks_total_migrants and ("from" in lowered or "out" in lowered):
+        return (
+            (
+                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE BirthPlace_norm = '{state_norm}' "
+                "GROUP BY BirthPlace"
+            ).format(state_norm=origin_state),
+            "Rule-based planner: total migrants from selected origin state.",
+        )
+
+    if destination_state and asks_total_migrants and ("to" in lowered or "into" in lowered):
+        return (
+            (
+                "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
+                "FROM state_d01_flows "
+                "WHERE AreaName_norm = '{state_norm}' "
+                "GROUP BY AreaName"
+            ).format(state_norm=destination_state),
+            "Rule-based planner: total migrants to selected destination state.",
         )
 
     if asks_gender:
@@ -519,7 +580,7 @@ def _deterministic_sql_answer(rows: list[dict]) -> str:
             f"{first['origin_state']} to {first['destination_state']}."
         )
 
-    if {"origin_state", "total_migrants"} <= keys:
+    if {"origin_state", "total_migrants"} <= keys and len(rows) == 1:
         return (
             f"Based on the available data, about {int(first['total_migrants']):,} people migrated from "
             f"{first['origin_state']}."
@@ -552,6 +613,50 @@ def _deterministic_sql_answer(rows: list[dict]) -> str:
     if {"origin", "male_migrants"} <= keys:
         top_items = ", ".join([f"{row['origin']} ({int(row['male_migrants']):,})" for row in rows[:5]])
         return f"The top origin regions by male migrants are: {top_items}."
+
+    if {"state", "total_migrants", "national_average_total_migrants", "percent_of_average"} <= keys:
+        total = float(first["total_migrants"] or 0)
+        national_average = float(first["national_average_total_migrants"] or 0)
+        difference = float(first.get("difference_from_average") or 0)
+        percent = float(first["percent_of_average"] or 0)
+        direction = "above" if difference >= 0 else "below"
+        return (
+            f"{first['state']} has {int(total):,} total migrants, compared with a national average "
+            f"state total of {national_average:,.0f}. That is {abs(difference):,.0f} {direction} "
+            f"the average, or {percent:.1f}% of the national average."
+        )
+
+    if {
+        "state",
+        "total_migrants",
+        "male_total",
+        "female_total",
+        "rural_total",
+        "urban_total",
+        "top_district",
+        "top_district_migrants",
+        "top_origin",
+        "top_origin_migrants",
+    } <= keys:
+        total = float(first["total_migrants"] or 0)
+        male = float(first["male_total"] or 0)
+        female = float(first["female_total"] or 0)
+        rural = float(first["rural_total"] or 0)
+        urban = float(first["urban_total"] or 0)
+        male_pct = male * 100.0 / total if total else 0
+        female_pct = female * 100.0 / total if total else 0
+        rural_pct = rural * 100.0 / total if total else 0
+        urban_pct = urban * 100.0 / total if total else 0
+        district_share = float(first["top_district_migrants"] or 0) * 100.0 / total if total else 0
+        origin_share = float(first["top_origin_migrants"] or 0) * 100.0 / total if total else 0
+        return (
+            f"Key insights for {first['state']}: total migrants are {int(total):,}. "
+            f"{first['top_district']} is the leading district with {int(first['top_district_migrants']):,} "
+            f"migrants ({district_share:.1f}% of the state total). The largest origin is {first['top_origin']} "
+            f"with {int(first['top_origin_migrants']):,} migrants ({origin_share:.1f}%). "
+            f"The gender split is {male_pct:.1f}% male and {female_pct:.1f}% female, while the rural-urban "
+            f"split is {rural_pct:.1f}% rural and {urban_pct:.1f}% urban."
+        )
 
     if {"male_total", "female_total", "total_migrants"} <= keys:
         male = float(first["male_total"] or 0)
@@ -760,19 +865,17 @@ class ChatOrchestrator:
         planner_label = "llm"
 
         try:
-            try:
+            if rule_plan:
+                sql, reason = rule_plan
+                planner_label = "rule-based"
+                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
+            else:
                 plan_raw = self._invoke_llm(sql_prompt)
                 plan = _extract_json(plan_raw)
                 sql = str(plan.get("sql", "")).strip()
                 reason = str(plan.get("reason", "")).strip()
                 if not sql:
                     raise SQLValidationError("Planner returned empty SQL.")
-                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
-            except Exception:
-                if not rule_plan:
-                    raise
-                sql, reason = rule_plan
-                planner_label = "rule-based"
                 validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
 
             validated_sql = _ensure_limit(validated_sql, self.settings.sql_default_limit)
