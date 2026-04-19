@@ -2,7 +2,7 @@ import './InfoPages.css';
 
 const FAQ_ITEMS = [
     {
-        q: 'What does this portal help me analyze?',
+        q: 'What does this dashboard help me analyze?',
         a: 'It helps analyze migration corridors across Indian states and districts, including composition by gender, reason, education, activity profile, and rural-urban distribution.',
     },
     {
@@ -30,12 +30,12 @@ const FAQ_ITEMS = [
         a: 'Different tables represent different dimensions (e.g., reason vs activity). Also, threshold and context selections can alter included records.',
     },
     {
-        q: 'Does this portal show causes of migration?',
+        q: 'Does this dashboard show causes of migration?',
         a: 'It shows reported distributions and associations. It is not a causal inference tool and should not be interpreted as proving causation.',
     },
     {
-        q: 'Can I use this for policy reporting?',
-        a: 'Yes for exploratory and descriptive reporting. For formal policy submissions, cite original source tables and mention methodological constraints.',
+        q: 'Can I use this for project or research reporting?',
+        a: 'Yes for exploratory and descriptive reporting. Cite the original Census tables and mention the dashboard limitations.',
     },
     {
         q: 'What is the best workflow for first-time users?',
@@ -51,8 +51,8 @@ export default function FAQPage() {
                     <span className="info-pill">Support</span>
                     <h1>Frequently Asked Questions</h1>
                     <p>
-                        This FAQ is designed for policy analysts, students, and researchers using the portal for
-                        structured migration analysis.
+                        This FAQ is designed for students and researchers using the dashboard for structured
+                        migration analysis.
                     </p>
                 </section>
 

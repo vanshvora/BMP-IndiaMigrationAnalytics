@@ -9,10 +9,10 @@ import AboutPage from './components/AboutPage';
 import './App.css';
 
 const TOP_NAV_LINKS = [
-    { id: 'home', label: 'Home', description: 'Portal overview and guided onboarding' },
+    { id: 'home', label: 'Home', description: 'Project overview and guided onboarding' },
     { id: 'ai', label: 'AI Chat', description: 'Conversational migration insights assistant' },
     { id: 'methodology', label: 'Methodology', description: 'Data and analytical methods' },
-    { id: 'faq', label: 'FAQ', description: 'Common portal questions' },
+    { id: 'faq', label: 'FAQ', description: 'Common project questions' },
     { id: 'about', label: 'About', description: 'About the migration analytics initiative' },
 ];
 
@@ -136,7 +136,7 @@ export default function App() {
                 <div className="portal-navbar-inner">
                     <div className="portal-brand">
                         <h1>India Migration Analytics</h1>
-                        <span>Institutional Migration Intelligence Portal</span>
+                        <span>Census Migration Data Dashboard</span>
                     </div>
 
                     <nav className="portal-links" aria-label="Portal navigation">

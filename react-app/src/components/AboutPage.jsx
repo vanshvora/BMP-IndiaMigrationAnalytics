@@ -5,11 +5,12 @@ export default function AboutPage() {
         <div className="info-page">
             <div className="info-shell">
                 <section className="info-hero">
-                    <span className="info-pill">About The Portal</span>
-                    <h1>India Migration Analytics Initiative</h1>
+                    <span className="info-pill">About The Project</span>
+                    <h1>India Migration Analytics</h1>
                     <p>
-                        A structured academic-institutional portal for studying internal migration patterns in India.
-                        The platform combines map-based interaction, analytical charts, and AI-assisted exploration.
+                        A student-built web dashboard for studying internal migration patterns in India using Census
+                        2011 migration tables. The platform combines map-based interaction, analytical charts, and
+                        AI-assisted exploration.
                     </p>
                 </section>
 
@@ -45,9 +46,9 @@ export default function AboutPage() {
                 <section className="info-card">
                     <h2 className="info-section-title">Intended User Groups</h2>
                     <ul className="info-list">
-                        <li>Government and planning institutions requiring spatial migration summaries.</li>
-                        <li>Academic researchers and students studying demographic mobility structures.</li>
-                        <li>Civil society and media users interpreting migration distribution narratives.</li>
+                        <li>Students learning how to interpret migration datasets.</li>
+                        <li>Researchers exploring state and district migration patterns.</li>
+                        <li>Reviewers or readers who need a clear visual summary of Census migration tables.</li>
                     </ul>
                 </section>
 
@@ -67,7 +68,7 @@ export default function AboutPage() {
                             <li>Use findings as descriptive indicators, not causal proof.</li>
                             <li>Cross-check AI outputs when preparing formal publications.</li>
                             <li>Mention the census period to avoid temporal misinterpretation.</li>
-                            <li>Where needed, corroborate with updated datasets for recent policy use.</li>
+                            <li>Use updated datasets for any recent migration analysis beyond Census 2011.</li>
                         </ul>
                     </article>
                 </section>

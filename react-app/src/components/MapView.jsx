@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { COORDINATES, INTERNATIONAL_COORDINATES, getBezierPoints, normalizeName } from '../utils/coordinates';
 import '../utils/leafletCurve';
-import './MapView.css';
+
 
 const STATE_A_COLORS = { base: '#2563eb', highlight: '#1d4ed8' };
 const STATE_B_COLORS = { base: '#f97316', highlight: '#ea580c' };
