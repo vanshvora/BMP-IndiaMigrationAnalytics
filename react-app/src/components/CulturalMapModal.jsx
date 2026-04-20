@@ -65,6 +65,13 @@ function CulturalSection({ category, categoryContent, stateDisplayName, candidat
                         <h3 className="cml-section-title">{categoryContent.title}</h3>
                         <p className="cml-section-text">{categoryContent.description}</p>
                     </article>
+
+                    {categoryContent.highlight ? (
+                        <article className="cml-note-card">
+                            <p className="cml-note-label">{categoryContent.highlightLabel}</p>
+                            <p className="cml-note-text">{categoryContent.highlight}</p>
+                        </article>
+                    ) : null}
                 </div>
             </div>
         </section>

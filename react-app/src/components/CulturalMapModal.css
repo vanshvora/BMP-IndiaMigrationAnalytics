@@ -173,19 +173,25 @@
 }
 
 .cml-content-column {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
   min-height: 0;
 }
 
-.cml-copy-card {
+.cml-copy-card,
+.cml-note-card {
   border: 1px solid #d4eae2;
   border-radius: 16px;
   background: #fcfffd;
   padding: 16px;
 }
 
+.cml-copy-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 
 .cml-section-kicker {
   margin: 0;
@@ -211,7 +217,25 @@
   color: #48645d;
 }
 
+.cml-note-card {
+  background: #f7fdfa;
+}
 
+.cml-note-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5f8179;
+}
+
+.cml-note-text {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.52;
+  color: #446760;
+}
 
 .cml-image-frame {
   margin: 0;
@@ -359,7 +383,9 @@
     order: initial;
   }
 
-
+  .cml-content-column {
+    grid-template-rows: auto auto;
+  }
 
   .cml-visual--festival {
     aspect-ratio: 12 / 8;
@@ -407,7 +433,8 @@
     margin-bottom: 14px;
   }
 
-  .cml-copy-card {
+  .cml-copy-card,
+  .cml-note-card {
     padding: 13px;
   }
 }

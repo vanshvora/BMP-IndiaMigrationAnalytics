@@ -21,7 +21,21 @@ export default function AboutPage() {
                     </article>
                     <article className="info-metric-card">
                         <h3>Primary Source</h3>
-                        <p>Census of India 2011 migration D-series tables with cleaned and normalized derivatives.</p>
+                        <p>
+                            Census of India 2011 migration D-series tables with cleaned and normalized derivatives.
+                            <br />
+                            <small>
+                                This is our primary data source, and we are working on datasets from the D series.{' '}
+                                <a
+                                    href="https://censusindia.gov.in/census.website/data/census-tables"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    Census of India Data Tables
+                                </a>
+                                .
+                            </small>
+                        </p>
                     </article>
                     <article className="info-metric-card">
                         <h3>Core Modes</h3>
