@@ -42,7 +42,4 @@ python -m app
 API base URL: `http://127.0.0.1:8000/api`
 
 Key endpoints:
-- `GET /api/health`
-- `GET /api/context/options`
-- `GET /api/schema`
 - `POST /api/chat`

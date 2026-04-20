@@ -860,7 +860,6 @@ class ChatOrchestrator:
             history=limited_history,
             allowed_tables=sorted(allowed_tables),
         )
-
         rule_plan = _rule_based_sql(request.message, request.context, state_names)
         planner_label = "llm"
 
@@ -943,22 +942,17 @@ class ChatOrchestrator:
                 ),
             )
 
-        answer_prompt = build_sql_answer_prompt(
-            question=request.message,
-            context=request.context,
-            sql=validated_sql,
-            rows=preview,
-        )
-
-        if route == "hybrid":
-            docs = self.retriever.retrieve(request.message, top_k=3)
-            answer_prompt = f"{answer_prompt}\n\nAdditional context:\n{json.dumps(docs, ensure_ascii=True)}"
-            extra_citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-        else:
-            extra_citations = []
-
         deterministic_answer = _deterministic_sql_answer(preview)
         if route == "hybrid":
+            docs = self.retriever.retrieve(request.message, top_k=3)
+            answer_prompt = build_sql_answer_prompt(
+                question=request.message,
+                context=request.context,
+                sql=validated_sql,
+                rows=preview,
+            )
+            answer_prompt = f"{answer_prompt}\n\nAdditional context:\n{json.dumps(docs, ensure_ascii=True)}"
+            extra_citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
             try:
                 answer = self._invoke_llm(answer_prompt).strip()
                 if _looks_like_raw_technical_answer(answer):
@@ -966,6 +960,7 @@ class ChatOrchestrator:
             except Exception:
                 answer = deterministic_answer
         else:
+            extra_citations = []
             answer = deterministic_answer
 
         citations = [Citation(label=f"table:{table}") for table in used_tables] + extra_citations

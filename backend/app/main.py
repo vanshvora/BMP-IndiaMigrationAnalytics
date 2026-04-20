@@ -8,7 +8,7 @@ from .config import settings
 from .db import DatabaseManager
 from .llm_provider import LLMInitializationError, build_chat_model
 from .retrieval import LexicalRetriever, build_default_documents
-from .schemas import ChatRequest, ChatResponse, HealthResponse
+from .schemas import ChatRequest, ChatResponse
 from .sql_agent import ChatOrchestrator
 
 
@@ -27,7 +27,7 @@ app.add_middleware(
 
 
 
-def _build_orchestrator() -> tuple[ChatOrchestrator, str | None]:
+def _build_orchestrator() -> ChatOrchestrator:
     db = DatabaseManager(settings)
     db.initialize()
 
@@ -47,40 +47,12 @@ def _build_orchestrator() -> tuple[ChatOrchestrator, str | None]:
         llm=llm,
         llm_error=llm_error,
     )
-    return orchestrator, llm_error
+    return orchestrator
 
 
 @app.on_event("startup")
 def on_startup() -> None:
-    orchestrator, llm_error = _build_orchestrator()
-    app.state.orchestrator = orchestrator
-    app.state.llm_error = llm_error
-
-
-@app.get(f"{settings.api_prefix}/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    orchestrator: ChatOrchestrator = app.state.orchestrator
-    return HealthResponse(
-        ok=True,
-        db_ready=orchestrator.db.initialized,
-        llm_ready=orchestrator.llm is not None,
-        llm_provider=settings.llm_provider,
-        llm_error=app.state.llm_error,
-    )
-
-
-
-
-@app.get(f"{settings.api_prefix}/context/options")
-def context_options() -> dict:
-    orchestrator: ChatOrchestrator = app.state.orchestrator
-    return orchestrator.db.context_options()
-
-
-@app.get(f"{settings.api_prefix}/schema")
-def schema() -> dict:
-    orchestrator: ChatOrchestrator = app.state.orchestrator
-    return {"tables": orchestrator.db.list_tables(), "schema": orchestrator.db.schema_summary()}
+    app.state.orchestrator = _build_orchestrator()
 
 
 @app.post(f"{settings.api_prefix}/chat", response_model=ChatResponse)

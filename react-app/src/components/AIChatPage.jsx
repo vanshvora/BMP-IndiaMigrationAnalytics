@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Papa from 'papaparse';
 import './AIChatPage.css';
 
 const API_BASE = import.meta.env.VITE_AI_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -50,7 +51,7 @@ export default function AIChatPage() {
             return [
                 `Show the top migration reasons for ${selectedDistrict}.`,
                 `Show the top 5 origin regions for ${selectedDistrict}.`,
-                `Give male vs female share in percentage terms.`,
+                `Give male vs female share in percentage terms for ${selectedDistrict}.`,
                 `Show the rural vs urban split for ${selectedDistrict}.`,
                 `Summarize one key insight for ${selectedDistrict}.`,
             ];
@@ -60,7 +61,7 @@ export default function AIChatPage() {
             return [
                 `Show the top 5 districts in ${selectedState} by total migrants.`,
                 `Compare ${selectedState} with national average.`,
-                `Give male vs female share in percentage terms.`,
+                `Give male vs female share in percentage terms for ${selectedState}.`,
                 `Show the rural vs urban split for ${selectedState}.`,
                 `What are the most important migration insights for ${selectedState}?`,
             ];
@@ -76,20 +77,36 @@ export default function AIChatPage() {
     }, [selectedDistrict, selectedState]);
 
     useEffect(() => {
-        fetch(`${API_BASE}/api/context/options`)
+        fetch('/district_interstate_flows.csv')
             .then((res) => {
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}`);
                 }
-                return res.json();
+                return res.text();
             })
-            .then((data) => {
+            .then((csvText) => {
+                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+                const stateSet = new Set();
+                const districtMap = {};
+                for (const row of parsed.data || []) {
+                    const stateName = String(row?.state || '').trim();
+                    const districtName = String(row?.district || '').trim();
+                    if (!stateName || !districtName) continue;
+                    stateSet.add(stateName);
+                    if (!districtMap[stateName]) districtMap[stateName] = new Set();
+                    districtMap[stateName].add(districtName);
+                }
 
-                setStates(Array.isArray(data?.states) ? data.states : []);
-                setDistrictsByState(data?.districtsByState || {});
+                const sortedStates = Array.from(stateSet).sort((a, b) => a.localeCompare(b));
+                const normalizedDistrictMap = {};
+                for (const stateName of sortedStates) {
+                    normalizedDistrictMap[stateName] = Array.from(districtMap[stateName] || []).sort((a, b) => a.localeCompare(b));
+                }
+                setStates(sortedStates);
+                setDistrictsByState(normalizedDistrictMap);
             })
             .catch((error) => {
-                console.error('Failed to load context:', error);
+                console.error('Failed to load static context options:', error);
                 setStates([]);
                 setDistrictsByState({});
             });

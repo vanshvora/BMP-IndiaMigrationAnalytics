@@ -102,7 +102,7 @@ Rules:
 1) Only generate SELECT queries.
 2) Use only tables from this allow-list: {", ".join(sorted(allowed_tables))}
 3) Prefer normalized columns (*_norm) for text filtering where available.
-4) Respect active context when relevant (selected_state, selected_district, flow_type).
+4) Respect active context when relevant (selected_state, selected_district, threshold).
 5) Add LIMIT if query may return many rows.
 6) If question is not answerable with SQL from available schema, return sql as empty string and explain why.
 
