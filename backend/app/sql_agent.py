@@ -1,979 +1,338 @@
+"""
+LangGraph-based SQL Agent & Chat Orchestrator.
+
+Instead of the previous 500+ line rule-based SQL generator, this module
+uses a **cyclic LangGraph state machine** that can:
+
+    1. generate_sql  — ask the LLM to write a PostgreSQL query
+    2. execute_sql   — run the query against the database
+    3. (if error)    — feed the error back to the LLM so it can fix itself
+    4. generate_answer — write a human-friendly answer from the results
+
+The agent retries up to MAX_RETRIES times before giving up, making it
+far more resilient than the old one-shot approach.
+"""
 from __future__ import annotations
 
-import difflib
-import json
 import re
-from typing import Any
+from typing import TypedDict
 
-import sqlglot
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from .config import Settings
 from .db import DatabaseManager
-from .prompting import build_rag_answer_prompt, build_sql_answer_prompt, build_sql_prompt
-from .retrieval import LexicalRetriever
+from .prompting import build_sql_generation_prompt, build_answer_prompt
 from .schemas import ChatContext, ChatRequest, ChatResponse, ChatTurn, Citation
 
 
-class SQLValidationError(RuntimeError):
-    pass
+# ── LangGraph State Definition ─────────────────────────────────────────
+
+class AgentState(TypedDict):
+    """Shared state that flows through every node in the graph."""
+    question: str                   # the user's natural-language question
+    context: ChatContext | None     # dashboard filters (state, district …)
+    history: list[ChatTurn]         # recent conversation turns
+    schema: str                     # database schema summary for the LLM
+    sql: str                        # the most recent SQL query
+    sql_error: str                  # error message from last execution (empty = ok)
+    result: list[dict]              # rows returned by the last successful query
+    answer: str                     # the final plain-English answer
+    attempts: int                   # how many generate→execute cycles so far
+    route: str                      # label for the response (sql / smalltalk / …)
 
 
-def _extract_json(raw_text: str) -> dict[str, Any]:
-    raw_text = raw_text.strip()
-    if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{.*\}", raw_text, flags=re.DOTALL)
-    if not match:
-        raise ValueError("Could not parse JSON from model output.")
-    return json.loads(match.group(0))
-
-
-def _normalize_sql(sql: str) -> str:
-    return sql.strip().rstrip(";")
-
-
-def _ensure_limit(sql: str, default_limit: int) -> str:
-    if re.search(r"\blimit\s+\d+\b", sql, flags=re.IGNORECASE):
-        return sql
-    return f"{sql}\nLIMIT {default_limit}"
-
-
-def _validate_select_sql(sql: str, allowed_tables: set[str]) -> tuple[str, list[str]]:
-    normalized = _normalize_sql(sql)
-    if not normalized:
-        raise SQLValidationError("Generated SQL was empty.")
-
-    lowered = normalized.lower()
-    if not (lowered.startswith("select") or lowered.startswith("with")):
-        raise SQLValidationError("Only SELECT SQL is allowed.")
-
-    banned_words = [
-        "insert",
-        "update",
-        "delete",
-        "drop",
-        "alter",
-        "create",
-        "replace",
-        "truncate",
-        "attach",
-        "copy",
-        "install",
-        "load",
-        "call",
-    ]
-    for word in banned_words:
-        if re.search(rf"\b{word}\b", lowered):
-            raise SQLValidationError(f"Disallowed SQL keyword detected: {word}")
-
-    try:
-        parsed = sqlglot.parse_one(normalized, read="duckdb")
-    except Exception as exc:
-        raise SQLValidationError(f"SQL parse failed: {exc}") from exc
-
-    cte_names = {
-        cte.alias_or_name
-        for cte in parsed.find_all(sqlglot.exp.CTE)
-        if cte.alias_or_name
-    }
-    referenced = sorted(
-        {
-            table.name
-            for table in parsed.find_all(sqlglot.exp.Table)
-            if table.name and table.name not in cte_names
-        }
-    )
-    if not referenced:
-        raise SQLValidationError("SQL does not reference any table.")
-
-    disallowed = [table for table in referenced if table not in allowed_tables]
-    if disallowed:
-        raise SQLValidationError(
-            f"SQL referenced table(s) outside allow-list: {', '.join(disallowed)}"
-        )
-
-    return normalized, referenced
-
-
-def _normalize_text(value: str | None) -> str:
-    if not value:
-        return ""
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def _extract_top_n(question: str, default: int = 5, max_value: int = 25) -> int:
-    match = re.search(r"\btop\s+(\d{1,2})\b", question.lower())
-    if not match:
-        return default
-    value = int(match.group(1))
-    if value < 1:
-        return default
-    return min(value, max_value)
-
-
-def _extract_location_after_keyword(question: str, keyword: str) -> str:
-    match = re.search(rf"\b{keyword}\s+([a-z][a-z\s&-]+)", question.lower())
-    if not match:
-        return ""
-    location = match.group(1).strip()
-    location = re.split(r"\b(?:from|to|into|by|for|with|in percentage|percentage|share|split)\b", location)[0].strip()
-    return _normalize_text(location)
-
-
-def _resolve_normalized_location(raw_location: str, candidates: list[str]) -> str:
-    if not raw_location:
-        return ""
-
-    normalized_candidates = {_normalize_text(candidate): candidate for candidate in candidates}
-    if raw_location in normalized_candidates:
-        return raw_location
-
-    match = difflib.get_close_matches(raw_location, list(normalized_candidates.keys()), n=1, cutoff=0.78)
-    return match[0] if match else raw_location
-
-
-def _canonicalize_question(question: str) -> str:
-    canonical = question.strip().lower()
-
-    replacements = [
-        (r"\bwhich states have the highest in[- ]migration corridors\b", "top destination states by total migrants"),
-        (r"\bwhich states have the highest out[- ]migration corridors\b", "top origin states by total migrants"),
-        (r"\bwhich states receive the most migrants\b", "top destination states by total migrants"),
-        (r"\bwhich states attract the most migrants\b", "top destination states by total migrants"),
-        (r"\bwhich states send the most migrants\b", "top origin states by total migrants"),
-        (r"\bhow many people migrated from ([a-z][a-z\s&-]+)\b", r"total migrants from \1"),
-        (r"\bhow many migrated from ([a-z][a-z\s&-]+)\b", r"total migrants from \1"),
-        (r"\bhow many people migrated to ([a-z][a-z\s&-]+)\b", r"total migrants to \1"),
-        (r"\bhow many migrated to ([a-z][a-z\s&-]+)\b", r"total migrants to \1"),
-        (r"\bmale vs female\b", "gender split"),
-        (r"\brural vs urban\b", "rural urban split"),
-        (r"\brural versus urban\b", "rural urban split"),
-        (r"\bin migration\b", "in-migration"),
-        (r"\bout migration\b", "out-migration"),
-    ]
-
-    for pattern, replacement in replacements:
-        canonical = re.sub(pattern, replacement, canonical)
-
-    return canonical
-
-
-def _canonicalize_follow_up(question: str, history: list[ChatTurn]) -> str:
-    canonical = _canonicalize_question(question)
-    if "out-migration" not in canonical and "in-migration" not in canonical:
-        return canonical
-
-    is_short_follow_up = bool(
-        re.search(r"\b(what about|how about|and|what of)\b", canonical)
-    ) or len(canonical.split()) <= 5
-    if not is_short_follow_up:
-        return canonical
-
-    previous_user = next(
-        (turn.content for turn in reversed(history) if turn.role == "user"),
-        "",
-    )
-    previous = _canonicalize_question(previous_user)
-    had_top_state_intent = (
-        ("top" in previous or "highest" in previous or "largest" in previous)
-        and "state" in previous
-        and ("migration" in previous or "migrants" in previous)
-    )
-    if not had_top_state_intent:
-        return canonical
-
-    if "out-migration" in canonical:
-        return "top origin states by total migrants"
-    return "top destination states by total migrants"
-
-
-def _is_quota_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return "quota" in text or "rate limit" in text or "429" in text
-
+# ── Smalltalk Detection ────────────────────────────────────────────────
 
 def _smalltalk_response(question: str) -> str | None:
+    """
+    Returns a canned reply for greetings and help requests.
+    Returns None if the message is a real data question.
+    """
     lowered = question.strip().lower()
     compact = re.sub(r"[^a-z]+", "", lowered)
-    greetings = {"hi", "hello", "hey", "hii", "hola", "namaste"}
-    help_prompts = {"help", "start", "menu"}
-    how_are_you_prompts = {"how are you", "how are u", "how r you", "hi how are you", "hello how are you"}
 
+    greetings = {"hi", "hello", "hey", "hii", "hola", "namaste"}
     if compact in greetings:
         return (
-            "Hello! Ask me about state-wise or district-wise migration data, and I can return exact numbers, "
-            "rankings, and short insights."
+            "Hello! Ask me about state-wise or district-wise migration data, "
+            "and I can return exact numbers, rankings, and short insights."
         )
 
-    if lowered in how_are_you_prompts:
+    if lowered in {"help", "start", "what can you do", "what can you do?"}:
         return (
-            "I am doing well and ready to help. Ask me about migration by state or district, gender split, "
-            "rural versus urban share, migration reasons, or totals."
-        )
-
-    if compact in help_prompts or lowered in {"what can you do", "what can you do?", "help me"}:
-        return (
-            "I can help with migration questions like top destination states, top origin regions for a district, "
-            "gender split, rural versus urban share, migration reasons, and methodology/source explanations."
+            "I can help with questions like top destination states, gender "
+            "split, rural vs urban share, migration reasons, and totals."
         )
 
     return None
 
 
-def _needs_rephrase_response(question: str) -> str | None:
-    text = question.strip()
-    compact = re.sub(r"[^a-z0-9]+", "", text.lower())
-    alpha_only = re.sub(r"[^a-z]+", "", text.lower())
-    lowered = text.lower()
+# ── SQL Safety Check ───────────────────────────────────────────────────
 
-    casual_markers = {
-        "whatever",
-        "okay",
-        "ok",
-        "okk",
-        "hmm",
-        "hmmm",
-        "lol",
-        "fine",
-        "nice",
-        "cool",
-        "bro",
-        "huh",
-        "alright",
-    }
+def _validate_sql(sql: str) -> str | None:
+    """
+    Basic safety gate: ensures the generated SQL is a SELECT and
+    does not contain dangerous keywords.
+    Returns an error string if invalid, None if it looks safe.
+    """
+    cleaned = sql.strip().rstrip(";")
+    if not cleaned:
+        return "Generated SQL was empty."
 
-    if len(compact) < 2:
-        return "I am here when you're ready. You can ask me about migration by state, district, gender split, reasons, or totals."
+    lowered = cleaned.lower()
+    if not (lowered.startswith("select") or lowered.startswith("with")):
+        return "Only SELECT queries are allowed."
 
-    if compact in casual_markers or lowered in casual_markers:
-        return (
-            "No problem. I am here whenever you want to explore the data. You can ask about top migration corridors, "
-            "gender split, rural versus urban share, migration reasons, or district-level trends."
-        )
-
-    if alpha_only and len(set(alpha_only)) <= 3 and len(alpha_only) >= 12:
-        return (
-            "That does not look like a migration question yet, but I am here to help when you're ready. You can ask something like "
-            "'Which states have the highest in-migration corridors?' or 'Give male vs female share in percentage terms.'"
-        )
-
-    if not re.search(r"[aeiou]", alpha_only) and len(alpha_only) >= 8:
-        return (
-            "I am not sure what you meant there, but I can help with migration questions in plain language about states, districts, "
-            "gender split, migration reasons, or totals."
-        )
+    banned = [
+        "insert", "update", "delete", "drop", "alter", "create",
+        "truncate", "attach", "copy", "install", "load",
+    ]
+    for word in banned:
+        if re.search(rf"\b{word}\b", lowered):
+            return f"Disallowed SQL keyword: {word}"
 
     return None
 
 
-def _rule_based_sql(question: str, context: ChatContext | None, state_names: list[str] | None = None) -> tuple[str, str] | None:
-    lowered = _canonicalize_question(question)
-    top_n = _extract_top_n(lowered)
-    selected_state = _normalize_text(context.selected_state if context else None)
-    selected_district = _normalize_text(context.selected_district if context else None)
-    candidates = state_names or []
-    state_from_question = _resolve_normalized_location(_extract_location_after_keyword(question, "from"), candidates)
-    destination_from_question = _resolve_normalized_location(_extract_location_after_keyword(question, "to"), candidates)
+# ── LangGraph Node Functions ───────────────────────────────────────────
+# Each function receives the current state, does one thing, and returns
+# a dict of updated fields.  LangGraph merges the dict into the state.
 
-    asks_gender = "male" in lowered or "female" in lowered or "gender" in lowered
-    asks_rural_urban = "rural" in lowered or "urban" in lowered
-    asks_top = "top" in lowered or "highest" in lowered or "largest" in lowered
-    asks_in_migration = "in-migration" in lowered or "in migration" in lowered or "destination" in lowered
-    asks_out_migration = "out-migration" in lowered or "out migration" in lowered
-    asks_total_migrants = (
-        "how many" in lowered
-        or "total" in lowered
-        or "migrated" in lowered
-        or "moved" in lowered
-        or "migrants" in lowered
+def _generate_sql(state: AgentState, llm: BaseChatModel) -> dict:
+    """
+    Node 1 – Ask the LLM to write a SQL query.
+    If there was a previous error, the prompt includes it so the LLM
+    can fix its own mistake (self-correction).
+    """
+    prompt = build_sql_generation_prompt(
+        schema_summary=state["schema"],
+        question=state["question"],
+        context=state.get("context"),
+        history=state.get("history", []),
+        error_context=state.get("sql_error") or None,
     )
 
-    if asks_top and asks_in_migration and ("state" in lowered or "corridor" in lowered):
-        return (
-            (
-                "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "GROUP BY AreaName "
-                "ORDER BY total_migrants DESC "
-                f"LIMIT {top_n}"
-            ),
-            "Rule-based planner: top destination states by D01 totals.",
-        )
+    response = llm.invoke(prompt)
+    raw_sql = str(response.content).strip()
 
-    if asks_top and (("origin" in lowered and "state" in lowered) or (asks_out_migration and ("state" in lowered or "corridor" in lowered))):
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "GROUP BY BirthPlace "
-                "ORDER BY total_migrants DESC "
-                f"LIMIT {top_n}"
-            ),
-            "Rule-based planner: top origin states by D01 totals.",
-        )
+    # Strip markdown code fences if the LLM wrapped the SQL
+    if raw_sql.startswith("```"):
+        raw_sql = re.sub(r"^```(?:sql)?\n?", "", raw_sql)
+        raw_sql = re.sub(r"\n?```$", "", raw_sql)
 
-    if asks_top and ("origin region" in lowered or "origin regions" in lowered or "origin" in lowered):
-        if selected_district:
-            return (
-                (
-                    "SELECT origin, SUM(count) AS total_migrants "
-                    "FROM district_interstate_flows "
-                    "WHERE district_norm = '{district_norm}' "
-                    "GROUP BY origin "
-                    "ORDER BY total_migrants DESC "
-                    "LIMIT {top_n}"
-                ).format(district_norm=selected_district, top_n=top_n),
-                "Rule-based planner: top origins for selected district.",
-            )
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "GROUP BY BirthPlace "
-                "ORDER BY total_migrants DESC "
-                f"LIMIT {top_n}"
-            ),
-            "Rule-based planner: top origin states by D01 totals.",
-        )
-
-    if selected_district and ("origin" in lowered or asks_top):
-        metric = "count"
-        alias = "total_migrants"
-        if "female" in lowered:
-            metric = "female"
-            alias = "female_migrants"
-        elif "male" in lowered:
-            metric = "male"
-            alias = "male_migrants"
-
-        return (
-            (
-                "SELECT origin, SUM({metric}) AS {alias} "
-                "FROM district_interstate_flows "
-                "WHERE district_norm = '{district_norm}' "
-                "GROUP BY origin "
-                "ORDER BY {alias} DESC "
-                "LIMIT {top_n}"
-            ).format(metric=metric, alias=alias, district_norm=selected_district, top_n=top_n),
-            "Rule-based planner: top origins for selected district.",
-        )
-
-    if selected_state and asks_top and "district" in lowered:
-        return (
-            (
-                "SELECT district, SUM(count) AS total_migrants "
-                "FROM district_interstate_flows "
-                "WHERE state_norm = '{state_norm}' "
-                "GROUP BY district "
-                "ORDER BY total_migrants DESC "
-                "LIMIT {top_n}"
-            ).format(state_norm=selected_state, top_n=top_n),
-            "Rule-based planner: top districts for selected state.",
-        )
-
-    if selected_state and "compare" in lowered and "national average" in lowered:
-        return (
-            (
-                "WITH state_totals AS ("
-                "SELECT state, state_norm, SUM(count) AS total_migrants "
-                "FROM district_interstate_flows "
-                "GROUP BY state, state_norm"
-                "), national AS ("
-                "SELECT AVG(total_migrants) AS national_average_total_migrants "
-                "FROM state_totals"
-                ") "
-                "SELECT state, total_migrants, national_average_total_migrants, "
-                "total_migrants - national_average_total_migrants AS difference_from_average, "
-                "total_migrants * 100.0 / national_average_total_migrants AS percent_of_average "
-                "FROM state_totals, national "
-                "WHERE state_norm = '{state_norm}'"
-            ).format(state_norm=selected_state),
-            "Rule-based planner: selected state compared with national average state total.",
-        )
-
-    if selected_state and ("insight" in lowered or "important" in lowered or "summarize" in lowered):
-        return (
-            (
-                "WITH state_summary AS ("
-                "SELECT state, SUM(count) AS total_migrants, SUM(male) AS male_total, "
-                "SUM(female) AS female_total, SUM(rural) AS rural_total, SUM(urban) AS urban_total "
-                "FROM district_interstate_flows "
-                "WHERE state_norm = '{state_norm}' "
-                "GROUP BY state"
-                "), top_district AS ("
-                "SELECT district AS top_district, SUM(count) AS top_district_migrants "
-                "FROM district_interstate_flows "
-                "WHERE state_norm = '{state_norm}' "
-                "GROUP BY district "
-                "ORDER BY top_district_migrants DESC "
-                "LIMIT 1"
-                "), top_origin AS ("
-                "SELECT origin AS top_origin, SUM(count) AS top_origin_migrants "
-                "FROM district_interstate_flows "
-                "WHERE state_norm = '{state_norm}' "
-                "GROUP BY origin "
-                "ORDER BY top_origin_migrants DESC "
-                "LIMIT 1"
-                ") "
-                "SELECT * FROM state_summary, top_district, top_origin"
-            ).format(state_norm=selected_state),
-            "Rule-based planner: selected state key migration insights.",
-        )
-
-    origin_state = state_from_question or selected_state
-    destination_state = destination_from_question or selected_state
-    has_explicit_flow_location = bool(state_from_question or destination_from_question)
-
-    if has_explicit_flow_location and origin_state and destination_state and asks_total_migrants:
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, AreaName AS destination_state, "
-                "SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE BirthPlace_norm = '{origin_state}' AND AreaName_norm = '{destination_state}' "
-                "GROUP BY BirthPlace, AreaName"
-            ).format(origin_state=origin_state, destination_state=destination_state),
-            "Rule-based planner: total migrants between specified origin and destination states.",
-        )
-
-    if origin_state and asks_total_migrants and ("from" in lowered or "out" in lowered):
-        return (
-            (
-                "SELECT BirthPlace AS origin_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE BirthPlace_norm = '{state_norm}' "
-                "GROUP BY BirthPlace"
-            ).format(state_norm=origin_state),
-            "Rule-based planner: total migrants from selected origin state.",
-        )
-
-    if destination_state and asks_total_migrants and ("to" in lowered or "into" in lowered):
-        return (
-            (
-                "SELECT AreaName AS destination_state, SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows "
-                "WHERE AreaName_norm = '{state_norm}' "
-                "GROUP BY AreaName"
-            ).format(state_norm=destination_state),
-            "Rule-based planner: total migrants to selected destination state.",
-        )
-
-    if asks_gender:
-        if selected_district:
-            return (
-                (
-                    "SELECT district, state, SUM(male) AS male_total, SUM(female) AS female_total, "
-                    "SUM(count) AS total_migrants "
-                    "FROM district_interstate_flows "
-                    "WHERE district_norm = '{district_norm}' "
-                    "GROUP BY district, state"
-                ).format(district_norm=selected_district),
-                "Rule-based planner: gender split for selected district.",
-            )
-        if selected_state:
-            return (
-                (
-                    "SELECT state, SUM(male) AS male_total, SUM(female) AS female_total, "
-                    "SUM(count) AS total_migrants "
-                    "FROM district_interstate_flows "
-                    "WHERE state_norm = '{state_norm}' "
-                    "GROUP BY state"
-                ).format(state_norm=selected_state),
-                "Rule-based planner: gender split for selected state.",
-            )
-        return (
-            (
-                "SELECT SUM(Total_Males) AS male_total, SUM(Total_Females) AS female_total, "
-                "SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows"
-            ),
-            "Rule-based planner: national gender split.",
-        )
-
-    if asks_rural_urban:
-        if selected_district:
-            return (
-                (
-                    "SELECT district, state, SUM(rural) AS rural_total, SUM(urban) AS urban_total, "
-                    "SUM(count) AS total_migrants "
-                    "FROM district_interstate_flows "
-                    "WHERE district_norm = '{district_norm}' "
-                    "GROUP BY district, state"
-                ).format(district_norm=selected_district),
-                "Rule-based planner: rural/urban split for selected district.",
-            )
-        if selected_state:
-            return (
-                (
-                    "SELECT state, SUM(rural) AS rural_total, SUM(urban) AS urban_total, "
-                    "SUM(count) AS total_migrants "
-                    "FROM district_interstate_flows "
-                    "WHERE state_norm = '{state_norm}' "
-                    "GROUP BY state"
-                ).format(state_norm=selected_state),
-                "Rule-based planner: rural/urban split for selected state.",
-            )
-        return (
-            (
-                "SELECT SUM(Rural_Persons) AS rural_total, SUM(Urban_Persons) AS urban_total, "
-                "SUM(Total_Persons) AS total_migrants "
-                "FROM state_d01_flows"
-            ),
-            "Rule-based planner: national rural/urban split.",
-        )
-
-    if selected_state and ("total" in lowered or "migrant" in lowered):
-        return (
-            (
-                "SELECT state, SUM(count) AS total_migrants "
-                "FROM district_interstate_flows "
-                "WHERE state_norm = '{state_norm}' "
-                "GROUP BY state"
-            ).format(state_norm=selected_state),
-            "Rule-based planner: total migrants for selected state.",
-        )
-
-    if selected_district and ("total" in lowered or "migrant" in lowered):
-        return (
-            (
-                "SELECT district, state, SUM(count) AS total_migrants "
-                "FROM district_interstate_flows "
-                "WHERE district_norm = '{district_norm}' "
-                "GROUP BY district, state"
-            ).format(district_norm=selected_district),
-            "Rule-based planner: total migrants for selected district.",
-        )
-
-    return None
+    return {
+        "sql": raw_sql.strip(),
+        "attempts": state.get("attempts", 0) + 1,
+    }
 
 
-def _deterministic_rag_answer(question: str, docs: list[dict[str, str]]) -> str:
-    if not docs:
-        return (
-            "I could not retrieve enough reference context for this question. "
-            "Try asking about migration source, threshold meaning, duration, reasons, or activity categories."
-        )
+def _execute_sql(state: AgentState, db: DatabaseManager) -> dict:
+    """
+    Node 2 – Run the SQL against PostgreSQL.
+    Uses safe_execute() so a bad query returns an error string
+    instead of crashing the whole request.
+    """
+    sql = state["sql"]
 
-    snippets = []
-    for doc in docs[:3]:
-        snippets.append(f"{doc['title']}: {doc['content']}")
-    return " ".join(snippets)
+    # Quick safety check before hitting the database
+    validation_error = _validate_sql(sql)
+    if validation_error:
+        return {"sql_error": validation_error, "result": []}
+
+    rows, error = db.safe_execute(sql)
+    if error:
+        return {"sql_error": error, "result": []}
+
+    return {"sql_error": "", "result": rows or []}
 
 
-def _deterministic_sql_answer(rows: list[dict]) -> str:
+def _generate_answer(state: AgentState, llm: BaseChatModel) -> dict:
+    """
+    Node 3 – Convert the SQL results into a human-readable answer.
+    """
+    rows = state.get("result", [])
+
+    # If no rows came back, give a simple "not found" message
     if not rows:
-        return "No data found for this question and current filters."
+        return {
+            "answer": (
+                "No data was found for your question with the current "
+                "filters. Try rephrasing or changing the selected "
+                "state / district."
+            ),
+            "route": "sql",
+        }
 
-    first = rows[0]
-    keys = set(first.keys())
+    prompt = build_answer_prompt(
+        question=state["question"],
+        context=state.get("context"),
+        sql=state["sql"],
+        rows=rows,
+    )
 
-    if {"origin_state", "destination_state", "total_migrants"} <= keys:
-        return (
-            f"Based on the available data, about {int(first['total_migrants']):,} people moved from "
-            f"{first['origin_state']} to {first['destination_state']}."
-        )
-
-    if {"origin_state", "total_migrants"} <= keys and len(rows) == 1:
-        return (
-            f"Based on the available data, about {int(first['total_migrants']):,} people migrated from "
-            f"{first['origin_state']}."
-        )
-
-    if {"destination_state", "total_migrants"} <= keys and len(rows) == 1:
-        return (
-            f"Based on the available data, about {int(first['total_migrants']):,} people migrated to "
-            f"{first['destination_state']}."
-        )
-
-    if {"destination_state", "total_migrants"} <= keys:
-        top_items = ", ".join(
-            [f"{row['destination_state']} ({int(row['total_migrants']):,})" for row in rows[:5]]
-        )
-        return f"The top destination states by migrants are: {top_items}."
-
-    if {"origin", "total_migrants"} <= keys:
-        top_items = ", ".join([f"{row['origin']} ({int(row['total_migrants']):,})" for row in rows[:5]])
-        return f"The top origin regions by migrants are: {top_items}."
-
-    if {"origin_state", "total_migrants"} <= keys:
-        top_items = ", ".join([f"{row['origin_state']} ({int(row['total_migrants']):,})" for row in rows[:5]])
-        return f"The top origin states by migrants are: {top_items}."
-
-    if {"origin", "female_migrants"} <= keys:
-        top_items = ", ".join([f"{row['origin']} ({int(row['female_migrants']):,})" for row in rows[:5]])
-        return f"The top origin regions by female migrants are: {top_items}."
-
-    if {"origin", "male_migrants"} <= keys:
-        top_items = ", ".join([f"{row['origin']} ({int(row['male_migrants']):,})" for row in rows[:5]])
-        return f"The top origin regions by male migrants are: {top_items}."
-
-    if {"state", "total_migrants", "national_average_total_migrants", "percent_of_average"} <= keys:
-        total = float(first["total_migrants"] or 0)
-        national_average = float(first["national_average_total_migrants"] or 0)
-        difference = float(first.get("difference_from_average") or 0)
-        percent = float(first["percent_of_average"] or 0)
-        direction = "above" if difference >= 0 else "below"
-        return (
-            f"{first['state']} has {int(total):,} total migrants, compared with a national average "
-            f"state total of {national_average:,.0f}. That is {abs(difference):,.0f} {direction} "
-            f"the average, or {percent:.1f}% of the national average."
-        )
-
-    if {
-        "state",
-        "total_migrants",
-        "male_total",
-        "female_total",
-        "rural_total",
-        "urban_total",
-        "top_district",
-        "top_district_migrants",
-        "top_origin",
-        "top_origin_migrants",
-    } <= keys:
-        total = float(first["total_migrants"] or 0)
-        male = float(first["male_total"] or 0)
-        female = float(first["female_total"] or 0)
-        rural = float(first["rural_total"] or 0)
-        urban = float(first["urban_total"] or 0)
-        male_pct = male * 100.0 / total if total else 0
-        female_pct = female * 100.0 / total if total else 0
-        rural_pct = rural * 100.0 / total if total else 0
-        urban_pct = urban * 100.0 / total if total else 0
-        district_share = float(first["top_district_migrants"] or 0) * 100.0 / total if total else 0
-        origin_share = float(first["top_origin_migrants"] or 0) * 100.0 / total if total else 0
-        return (
-            f"Key insights for {first['state']}: total migrants are {int(total):,}. "
-            f"{first['top_district']} is the leading district with {int(first['top_district_migrants']):,} "
-            f"migrants ({district_share:.1f}% of the state total). The largest origin is {first['top_origin']} "
-            f"with {int(first['top_origin_migrants']):,} migrants ({origin_share:.1f}%). "
-            f"The gender split is {male_pct:.1f}% male and {female_pct:.1f}% female, while the rural-urban "
-            f"split is {rural_pct:.1f}% rural and {urban_pct:.1f}% urban."
-        )
-
-    if {"male_total", "female_total", "total_migrants"} <= keys:
-        male = float(first["male_total"] or 0)
-        female = float(first["female_total"] or 0)
-        total = float(first["total_migrants"] or 0)
-        if total > 0:
-            male_pct = male * 100.0 / total
-            female_pct = female * 100.0 / total
-            return (
-                f"The gender split is {male_pct:.1f}% male ({int(male):,}) and "
-                f"{female_pct:.1f}% female ({int(female):,}), out of {int(total):,} total migrants."
-            )
-        return f"The totals are {int(male):,} male migrants and {int(female):,} female migrants."
-
-    if {"rural_total", "urban_total", "total_migrants"} <= keys:
-        rural = float(first["rural_total"] or 0)
-        urban = float(first["urban_total"] or 0)
-        total = float(first["total_migrants"] or 0)
-        if total > 0:
-            rural_pct = rural * 100.0 / total
-            urban_pct = urban * 100.0 / total
-            return (
-                f"The rural-urban split is {rural_pct:.1f}% rural ({int(rural):,}) and "
-                f"{urban_pct:.1f}% urban ({int(urban):,}), out of {int(total):,} total migrants."
-            )
-        return f"The totals are {int(rural):,} rural migrants and {int(urban):,} urban migrants."
-
-    if len(rows) == 1:
-        parts = [f"{k.replace('_', ' ')}: {v}" for k, v in first.items()]
-        return "I found one matching result. " + ", ".join(parts) + "."
-
-    return f"I found {len(rows)} matching results. Please check the table below for the details."
+    response = llm.invoke(prompt)
+    return {"answer": str(response.content).strip(), "route": "sql"}
 
 
-def _looks_like_raw_technical_answer(answer: str) -> bool:
-    lowered = answer.lower()
-    suspicious_markers = [
-        "```",
-        "select ",
-        "from state_d01_flows",
-        "from district_interstate_flows",
-        '"male_percentage"',
-        '"female_percentage"',
-        "sql used",
-        "result:",
-        "[{",
-    ]
-    return any(marker in lowered for marker in suspicious_markers)
+def _should_retry(state: AgentState) -> str:
+    """
+    Decision edge – called after execute_sql.
+    • If there was an error AND we haven't hit the retry limit → retry
+    • Otherwise → move on to generate_answer
+    """
+    has_error = bool(state.get("sql_error"))
+    under_limit = state.get("attempts", 0) < 3
 
+    if has_error and under_limit:
+        return "retry"
+    return "answer"
+
+
+# ── Graph Builder ──────────────────────────────────────────────────────
+
+def build_sql_agent(llm: BaseChatModel, db: DatabaseManager):
+    """
+    Constructs the LangGraph state machine.
+
+    Flow diagram:
+        ┌──────────────┐
+        │ generate_sql  │◄─── retry (error + attempts < 3)
+        └──────┬───────┘
+               ▼
+        ┌──────────────┐
+        │  execute_sql  │
+        └──────┬───────┘
+               ▼
+          (should_retry?)
+            │         │
+          retry     answer
+            │         ▼
+            │   ┌─────────────────┐
+            │   │ generate_answer  │ ──► END
+            │   └─────────────────┘
+            └─────────────────────────┘
+    """
+    graph = StateGraph(AgentState)
+
+    # Register nodes — lambdas inject the LLM and DB dependencies
+    graph.add_node("generate_sql", lambda s: _generate_sql(s, llm))
+    graph.add_node("execute_sql", lambda s: _execute_sql(s, db))
+    graph.add_node("generate_answer", lambda s: _generate_answer(s, llm))
+
+    # Wire the edges
+    graph.set_entry_point("generate_sql")
+    graph.add_edge("generate_sql", "execute_sql")
+    graph.add_conditional_edges("execute_sql", _should_retry, {
+        "retry": "generate_sql",
+        "answer": "generate_answer",
+    })
+    graph.add_edge("generate_answer", END)
+
+    # MemorySaver keeps agent state across invocations (thread-safe)
+    memory = MemorySaver()
+    return graph.compile(checkpointer=memory)
+
+
+# ── Chat Orchestrator ──────────────────────────────────────────────────
 
 class ChatOrchestrator:
+    """
+    Top-level entry point for the /chat endpoint.
+
+    Responsibilities:
+        1. Catch smalltalk (greetings, "help") → return canned reply
+        2. Everything else → delegate to the LangGraph SQL agent
+    """
+
     def __init__(
         self,
         *,
         settings: Settings,
         db: DatabaseManager,
-        retriever: LexicalRetriever,
         llm: BaseChatModel | None,
         llm_error: str | None = None,
     ) -> None:
         self.settings = settings
         self.db = db
-        self.retriever = retriever
         self.llm = llm
         self.llm_error = llm_error
 
-    def _invoke_llm(self, prompt: str) -> str:
-        if not self.llm:
-            raise RuntimeError(self.llm_error or "LLM is not configured.")
-        response = self.llm.invoke(prompt)
-        content = getattr(response, "content", "")
-        if isinstance(content, list):
-            return " ".join(str(item) for item in content)
-        return str(content)
+        # Build the LangGraph agent (if the LLM loaded successfully)
+        self.agent = build_sql_agent(llm, db) if llm else None
 
-    def _route_question(self, question: str) -> str:
-        lowered = _canonicalize_question(question)
-        conceptual_tokens = {
-            "what is",
-            "define",
-            "meaning",
-            "interpret",
-            "methodology",
-            "source",
-            "difference between",
-            "explain",
-        }
-        numeric_tokens = {
-            "top",
-            "highest",
-            "lowest",
-            "rank",
-            "total",
-            "sum",
-            "count",
-            "compare",
-            "share",
-            "percentage",
-            "male",
-            "female",
-            "rural",
-            "urban",
-            "migration split",
-            "split",
-            "migrated",
-            "destination",
-            "origin",
-            "receive the most migrants",
-            "send the most migrants",
-            "district",
-            "state",
-        }
-
-        has_conceptual = any(token in lowered for token in conceptual_tokens)
-        has_numeric = any(token in lowered for token in numeric_tokens)
-
-        if has_conceptual and has_numeric:
-            return "hybrid"
-        if has_conceptual:
-            return "rag"
-        return "sql"
-
-    def _follow_ups(self, context_state: str | None, context_district: str | None) -> list[str]:
+    def _follow_ups(
+        self, state: str | None, district: str | None,
+    ) -> list[str]:
+        """Suggests contextual follow-up questions."""
         prompts = [
-            "Show the top 5 origin states by total migrants.",
-            "Give male vs female share in percentage terms.",
-            "Explain one key insight and one caveat from this data.",
+            "Show the top 5 destination states by total migrants.",
+            "What is the gender split of migrants?",
+            "Show rural vs urban migration share.",
         ]
-        if context_state:
-            prompts.insert(0, f"Compare {context_state} with national average.")
-        if context_district:
-            prompts[0] = f"Show the top 5 origin regions for {context_district}."
-            prompts.insert(0, f"Show the top migration reasons for {context_district}.")
+        if state:
+            prompts.insert(0, f"Give key migration insights for {state}.")
+        if district:
+            prompts.insert(0, f"Show top origin regions for {district}.")
         return prompts[:4]
 
+    # ── Main Chat Method ───────────────────────────────────────────────
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        ctx_state = request.context.selected_state if request.context else None
+        ctx_district = request.context.selected_district if request.context else None
+        follow_ups = self._follow_ups(ctx_state, ctx_district)
+
+        # 1. Smalltalk
         smalltalk = _smalltalk_response(request.message)
         if smalltalk:
             return ChatResponse(
-                answer=smalltalk,
-                route="smalltalk",
-                follow_ups=self._follow_ups(
-                    request.context.selected_state if request.context else None,
-                    request.context.selected_district if request.context else None,
-                ),
+                answer=smalltalk, route="smalltalk", follow_ups=follow_ups,
             )
 
-        rephrase = _needs_rephrase_response(request.message)
-        if rephrase:
+        # 2. Guard: LLM must be available
+        if not self.agent:
             return ChatResponse(
-                answer=rephrase,
-                route="clarify",
-                follow_ups=self._follow_ups(
-                    request.context.selected_state if request.context else None,
-                    request.context.selected_district if request.context else None,
-                ),
+                answer=self.llm_error or "LLM is not configured.",
+                route="error",
+                error=self.llm_error,
             )
 
-        route = self._route_question(request.message)
-
-        if route == "rag":
-            docs = self.retriever.retrieve(request.message, top_k=4)
-            rag_prompt = build_rag_answer_prompt(
-                question=request.message,
-                context=request.context,
-                retrieved_docs=docs,
-            )
-            try:
-                answer = self._invoke_llm(rag_prompt)
-            except Exception as exc:
-                answer = _deterministic_rag_answer(request.message, docs)
-                return ChatResponse(
-                    answer=answer,
-                    route="rag",
-                    citations=[Citation(label="RAG Fallback", detail=str(exc))],
-                    follow_ups=[],
-                    error=str(exc),
-                )
-
-            citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-            return ChatResponse(
-                answer=answer.strip(),
-                route="rag",
-                citations=citations,
-                follow_ups=self._follow_ups(
-                    request.context.selected_state if request.context else None,
-                    request.context.selected_district if request.context else None,
-                ),
-            )
-
-        schema = self.db.schema_summary()
-        allowed_tables = set(self.db.list_tables())
-        limited_history = request.history[-self.settings.max_history_turns :]
-        state_names = self.db.context_options().get("states", [])
-        canonical_question = _canonicalize_follow_up(request.message, limited_history)
-        sql_prompt = build_sql_prompt(
-            schema_summary=schema,
-            question=request.message,
-            canonical_question=canonical_question,
-            context=request.context,
-            history=limited_history,
-            allowed_tables=sorted(allowed_tables),
-        )
-        rule_plan = _rule_based_sql(request.message, request.context, state_names)
-        planner_label = "llm"
-
+        # 3. Run the LangGraph SQL agent
         try:
-            if rule_plan:
-                sql, reason = rule_plan
-                planner_label = "rule-based"
-                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
-            else:
-                plan_raw = self._invoke_llm(sql_prompt)
-                plan = _extract_json(plan_raw)
-                sql = str(plan.get("sql", "")).strip()
-                reason = str(plan.get("reason", "")).strip()
-                if not sql:
-                    raise SQLValidationError("Planner returned empty SQL.")
-                validated_sql, used_tables = _validate_select_sql(sql, allowed_tables)
+            schema = self.db.schema_summary()
+            history = request.history[-self.settings.max_history_turns :]
 
-            validated_sql = _ensure_limit(validated_sql, self.settings.sql_default_limit)
-            rows = self.db.execute_query(validated_sql)
+            result = self.agent.invoke(
+                {
+                    "question": request.message,
+                    "context": request.context,
+                    "history": history,
+                    "schema": schema,
+                    "sql": "",
+                    "sql_error": "",
+                    "result": [],
+                    "answer": "",
+                    "attempts": 0,
+                    "route": "sql",
+                },
+                config={"configurable": {"thread_id": "default"}},
+            )
+
+            return ChatResponse(
+                answer=result.get("answer", "I could not generate an answer."),
+                route=result.get("route", "sql"),
+                sql=result.get("sql"),
+                data_preview=result.get("result", [])[:self.settings.max_rows_preview],
+                citations=[Citation(label="LangGraph SQL Agent")],
+                follow_ups=follow_ups,
+            )
+
         except Exception as exc:
-            if route == "hybrid":
-                docs = self.retriever.retrieve(request.message, top_k=4)
-                rag_prompt = build_rag_answer_prompt(
-                    question=request.message,
-                    context=request.context,
-                    retrieved_docs=docs,
-                )
-                answer = self._invoke_llm(rag_prompt)
-                citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-                return ChatResponse(
-                    answer=answer.strip(),
-                    route="rag-fallback",
-                    citations=citations,
-                    follow_ups=self._follow_ups(
-                        request.context.selected_state if request.context else None,
-                        request.context.selected_district if request.context else None,
-                    ),
-                    error=str(exc),
-                )
-
-            if _is_quota_error(exc):
-                quota_message = (
-                    "LLM quota is currently exceeded for the configured provider. "
-                    "Update billing/quota or switch provider key. "
-                    "For now, ask direct metric questions with selected state/district to use deterministic SQL."
-                )
-                return ChatResponse(
-                    answer=quota_message,
-                    route="sql",
-                    citations=[Citation(label="LLM Quota", detail=str(exc))],
-                    follow_ups=self._follow_ups(
-                        request.context.selected_state if request.context else None,
-                        request.context.selected_district if request.context else None,
-                    ),
-                    error=str(exc),
-                )
-
             return ChatResponse(
-                answer=(
-                    "Please ask migration-related questions only. You can ask about states, districts, gender split, "
-                    "rural versus urban share, migration reasons, or totals."
-                ),
-                route="sql",
-                citations=[],
-                follow_ups=[],
+                answer="Something went wrong while processing your question. Please try again.",
+                route="error",
                 error=str(exc),
+                follow_ups=follow_ups,
             )
-
-        preview = rows[: self.settings.max_rows_preview]
-        if not preview:
-            return ChatResponse(
-                answer=_deterministic_sql_answer(preview),
-                route=route,
-                sql=validated_sql,
-                citations=[Citation(label=f"table:{table}") for table in used_tables],
-                data_preview=[],
-                follow_ups=self._follow_ups(
-                    request.context.selected_state if request.context else None,
-                    request.context.selected_district if request.context else None,
-                ),
-            )
-
-        deterministic_answer = _deterministic_sql_answer(preview)
-        if route == "hybrid":
-            docs = self.retriever.retrieve(request.message, top_k=3)
-            answer_prompt = build_sql_answer_prompt(
-                question=request.message,
-                context=request.context,
-                sql=validated_sql,
-                rows=preview,
-            )
-            answer_prompt = f"{answer_prompt}\n\nAdditional context:\n{json.dumps(docs, ensure_ascii=True)}"
-            extra_citations = [Citation(label=doc["title"], detail=doc["source"]) for doc in docs]
-            try:
-                answer = self._invoke_llm(answer_prompt).strip()
-                if _looks_like_raw_technical_answer(answer):
-                    answer = deterministic_answer
-            except Exception:
-                answer = deterministic_answer
-        else:
-            extra_citations = []
-            answer = deterministic_answer
-
-        citations = [Citation(label=f"table:{table}") for table in used_tables] + extra_citations
-        if planner_label == "rule-based":
-            citations.append(Citation(label="planner:rule-based", detail=reason))
-        return ChatResponse(
-            answer=answer,
-            route=route,
-            sql=validated_sql,
-            citations=citations,
-            data_preview=preview,
-            follow_ups=self._follow_ups(
-                request.context.selected_state if request.context else None,
-                request.context.selected_district if request.context else None,
-            ),
-        )
