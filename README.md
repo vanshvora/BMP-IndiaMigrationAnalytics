@@ -18,23 +18,9 @@ The platform transforms raw census migration data into actionable intelligence t
 
 ### AI Chat Assistant
 - **Natural Language Queries** — Ask questions about migration data in plain English (e.g., *"Which state has the highest female outflow?"*) and receive contextual, data-backed answers.
-- Powered by LangChain + LLM (Groq / OpenAI-compatible) with SQL generation over a DuckDB database.
-
-### Rich Data Visualizations
-- **Demographic Breakdowns** — Analyze migration by gender (Male / Female) and area type (Urban / Rural) with interactive Chart.js charts.
-- **Reason for Migration** — Understand why people migrate (employment, education, marriage, etc.) with donut and bar charts.
-- **Duration of Residence** — See how long migrants have lived in their destination.
-- **Economic Activity & Education** — Explore migrant workforce participation and educational attainment.
-- **Marital Status** — View marital composition of migrant populations.
-
-### Cultural Landscape
-- **State Cultural Modal** — Click any state to view a curated cultural overview including cuisine, festivals, landmarks, and representative imagery for each region.
-
-### Information Pages
-- **Home** — Guided onboarding with feature highlights and quick-start navigation.
-- **Methodology** — Detailed explanation of data sources, cleaning pipeline, and analytical methods.
-- **FAQ** — Common questions about the platform and migration data.
-- **About** — Background on the project, team, and data attribution.
+- **LangGraph State Machine** — Powered by a cyclic LangGraph SQL agent with self-correction and automatic retries.
+- **NeMo Guardrails & Safety** — Inputs are filtered for off-topic questions and jailbreak attempts.
+- **PostgreSQL Database** — Queries are executed directly against a cloud-hosted Neon PostgreSQL database.
 
 ---
 
@@ -43,7 +29,7 @@ The platform transforms raw census migration data into actionable intelligence t
 | Layer | Technologies |
 |---|---|
 | **Frontend** | React 19, Vite 7, Leaflet / React-Leaflet 5, Chart.js 4 / react-chartjs-2, PapaParse, PrimeIcons |
-| **Backend** | FastAPI 0.116, Uvicorn 0.35, DuckDB 1.3, LangChain 0.3, LangChain-OpenAI, SQLGlot 27, Pydantic Settings |
+| **Backend** | FastAPI 0.116, Uvicorn 0.35, LangChain 0.3, LangGraph 0.3, NeMo Guardrails, PostgreSQL (psycopg2-binary), Pydantic Logfire, Pydantic Settings |
 | **Data Processing** | Python, Pandas, Jupyter Notebooks |
 | **Data Source** | Census of India 2011 — D-Series Migration Tables |
 
@@ -87,15 +73,15 @@ bmp-cursor/
 ├── backend/                    # FastAPI backend (AI chat service)
 │   ├── app/
 │   │   ├── main.py             # FastAPI app, CORS, /api/chat endpoint
-│   │   ├── sql_agent.py        # LangChain chat orchestrator & SQL generation
-│   │   ├── prompting.py        # System prompts & few-shot examples
-│   │   ├── retrieval.py        # Lexical retrieval for schema context
-│   │   ├── db.py               # DuckDB database manager
-│   │   ├── llm_provider.py     # LLM factory (Groq / OpenAI-compatible)
+│   │   ├── sql_agent.py        # LangGraph agent state machine & ChatOrchestrator
+│   │   ├── prompting.py        # System prompts & schema guidelines
+│   │   ├── db.py               # PostgreSQL database manager (Neon DB)
+│   │   ├── llm_provider.py     # LLM factory (Groq / langchain-openai)
 │   │   ├── config.py           # Pydantic Settings configuration
 │   │   └── schemas.py          # Request/response models
-│   ├── data/
-│   │   └── migration.duckdb    # Pre-built DuckDB database
+│   ├── guardrails/             # NeMo Guardrails configuration
+│   │   ├── config.yml          # Guardrails engine & prompt settings
+│   │   └── rails.co            # Canonical intent & flow definitions
 │   └── requirements.txt
 │
 ├── data-cleaning/              # Data processing pipeline
@@ -158,21 +144,22 @@ pip install -r requirements.txt
 
 #### Configure Environment Variables
 
-Create a `.env` file in the `backend/` directory (or copy from `.env.example` if available):
+Create a `.env` file in the `backend/` directory:
 
 ```env
 LLM_PROVIDER=groq
-GROQ_API_KEY=your_api_key_here
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
 GROQ_BASE_URL=https://api.groq.com/openai/v1
-```
 
-> **Note:** The backend uses an OpenAI-compatible interface, so any provider that exposes an OpenAI-style API can be configured here.
+DATABASE_URL=postgresql://user:password@host/neondb?sslmode=require
+LOGFIRE_TOKEN=your_logfire_token_here
+```
 
 #### Run the Backend
 
 ```bash
-python -m app
+uvicorn app.main:app --reload --port 8000
 ```
 
 The API server starts at **http://127.0.0.1:8000**. The chat endpoint is available at `POST /api/chat`.
