@@ -28,8 +28,8 @@ Key domain knowledge & table guide for India Census 2011 migration dataset:
 2. PostgreSQL Syntax & Quote Rules:
    • PostgreSQL column names containing ANY capital letters MUST be wrapped in double quotes exactly as written in the schema (e.g. "Persons_Total", "Total_Persons", "Persons_Work", "districtCode", "AreaName", "BirthPlace").
    • Unquoted column names are automatically lowercased by PostgreSQL and WILL FAIL if the schema uses mixed case.
-   • Plain lowercase columns like `state`, `district`, `origin`, `count`, `male`, `female`, `rural`, `urban`, `state_norm`, `district_norm`, `origin_norm` do NOT require quotes.
-   • Use `ILIKE` for case-insensitive text matching (e.g., `state ILIKE 'Maharashtr%'` or `origin ILIKE 'Uttar Pradesh'`).
+   • Plain lowercase columns like `state`, `district`, `origin`, `count`, `male`, `female`, `rural`, `urban` do NOT require quotes.
+   • CRITICAL: Data in text columns is usually UPPERCASE (e.g. 'MAHARASHTRA'). NEVER use strict equality (`=`) for state, district, or origin matching. YOU MUST ALWAYS use `ILIKE` (e.g. `state ILIKE '%Maharashtra%'` or `origin ILIKE '%Uttar Pradesh%'`).
 """.strip()
 
 

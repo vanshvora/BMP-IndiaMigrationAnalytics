@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import Papa from 'papaparse';
+import { useEffect, useRef, useState } from 'react';
 import './AIChatPage.css';
 
 const API_BASE = import.meta.env.VITE_AI_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -38,103 +37,12 @@ export default function AIChatPage() {
             'Ask me anything about state-wise or district-wise migration data. I can return exact numbers and explain insights.'
         ),
     ]);
-    const [states, setStates] = useState([]);
-    const [districtsByState, setDistrictsByState] = useState({});
-    const [selectedState, setSelectedState] = useState('');
-    const [selectedDistrict, setSelectedDistrict] = useState('');
-    const [threshold, setThreshold] = useState('');
     const [requestError, setRequestError] = useState('');
     const messagesEndRef = useRef(null);
-
-    const quickQuestions = useMemo(() => {
-        if (selectedDistrict) {
-            return [
-                `Show the top migration reasons for ${selectedDistrict}.`,
-                `Show the top 5 origin regions for ${selectedDistrict}.`,
-                `Give male vs female share in percentage terms for ${selectedDistrict}.`,
-                `Show the rural vs urban split for ${selectedDistrict}.`,
-                `Summarize one key insight for ${selectedDistrict}.`,
-            ];
-        }
-
-        if (selectedState) {
-            return [
-                `Show the top 5 districts in ${selectedState} by total migrants.`,
-                `Compare ${selectedState} with national average.`,
-                `Give male vs female share in percentage terms for ${selectedState}.`,
-                `Show the rural vs urban split for ${selectedState}.`,
-                `What are the most important migration insights for ${selectedState}?`,
-            ];
-        }
-
-        return [
-            'Which states have the highest in-migration corridors?',
-            'Show the top 5 origin states by total migrants.',
-            'Give male vs female share in percentage terms.',
-            'What is the national rural vs urban migration split?',
-            'Which states have the highest out-migration corridors?',
-        ];
-    }, [selectedDistrict, selectedState]);
-
-    useEffect(() => {
-        fetch('/district_interstate_flows.csv')
-            .then((res) => {
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
-                return res.text();
-            })
-            .then((csvText) => {
-                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-                const stateSet = new Set();
-                const districtMap = {};
-                for (const row of parsed.data || []) {
-                    const stateName = String(row?.state || '').trim();
-                    const districtName = String(row?.district || '').trim();
-                    if (!stateName || !districtName) continue;
-                    stateSet.add(stateName);
-                    if (!districtMap[stateName]) districtMap[stateName] = new Set();
-                    districtMap[stateName].add(districtName);
-                }
-
-                const sortedStates = Array.from(stateSet).sort((a, b) => a.localeCompare(b));
-                const normalizedDistrictMap = {};
-                for (const stateName of sortedStates) {
-                    normalizedDistrictMap[stateName] = Array.from(districtMap[stateName] || []).sort((a, b) => a.localeCompare(b));
-                }
-                setStates(sortedStates);
-                setDistrictsByState(normalizedDistrictMap);
-            })
-            .catch((error) => {
-                console.error('Failed to load static context options:', error);
-                setStates([]);
-                setDistrictsByState({});
-            });
-    }, []);
-
-    const districtOptions = useMemo(() => {
-        if (!selectedState) return [];
-        return districtsByState[selectedState] || [];
-    }, [districtsByState, selectedState]);
-
-    useEffect(() => {
-        if (!selectedDistrict) return;
-        if (districtOptions.includes(selectedDistrict)) return;
-        setSelectedDistrict('');
-    }, [districtOptions, selectedDistrict]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }, [messages, loading]);
-
-    function buildContext() {
-        return {
-            page: 'ai',
-            selected_state: selectedState || null,
-            selected_district: selectedDistrict || null,
-            threshold: threshold ? Number(threshold) || null : null,
-        };
-    }
 
     async function sendMessage(rawMessage) {
         const message = String(rawMessage || '').trim();
@@ -156,7 +64,7 @@ export default function AIChatPage() {
                 },
                 body: JSON.stringify({
                     message,
-                    context: buildContext(),
+                    context: { page: 'ai' },
                     history,
                 }),
             });
@@ -192,75 +100,11 @@ export default function AIChatPage() {
     }
 
     return (
-        <div className="ai-page">
-            <aside className="ai-side-panel">
-                <section className="ai-card">
-                    <h2 className="ai-card-title">Context</h2>
-                    <label className="ai-label">State</label>
-                    <select
-                        className="ai-input"
-                        value={selectedState}
-                        onChange={(event) => {
-                            setSelectedState(event.target.value);
-                            setSelectedDistrict('');
-                        }}
-                    >
-                        <option value="">None</option>
-                        {states.map((stateName) => (
-                            <option key={stateName} value={stateName}>
-                                {stateName}
-                            </option>
-                        ))}
-                    </select>
-
-                    <label className="ai-label">District</label>
-                    <select
-                        className="ai-input"
-                        value={selectedDistrict}
-                        onChange={(event) => setSelectedDistrict(event.target.value)}
-                        disabled={!selectedState}
-                    >
-                        <option value="">None</option>
-                        {districtOptions.map((districtName) => (
-                            <option key={districtName} value={districtName}>
-                                {districtName}
-                            </option>
-                        ))}
-                    </select>
-
-                    <label className="ai-label">Threshold (optional)</label>
-                    <input
-                        className="ai-input"
-                        type="number"
-                        value={threshold}
-                        placeholder="e.g. 1000"
-                        onChange={(event) => setThreshold(event.target.value)}
-                    />
-
-                </section>
-
-                <section className="ai-card">
-                    <h2 className="ai-card-title">Quick Questions</h2>
-                    <div className="ai-quick-list">
-                        {quickQuestions.map((prompt) => (
-                            <button
-                                key={prompt}
-                                type="button"
-                                className="ai-quick-btn"
-                                onClick={() => sendMessage(prompt)}
-                                disabled={loading}
-                            >
-                                {prompt}
-                            </button>
-                        ))}
-                    </div>
-                </section>
-            </aside>
-
+        <div className="ai-page ai-page-full">
             <section className="ai-chat-panel">
                 <div className="ai-chat-head">
                     <h1>AI Migration Chat</h1>
-                    <p>Full-page assistant for data Q&A, insights, and FAQ support.</p>
+                    <p>Ask about migration corridors, gender splits, district insights, and more.</p>
                 </div>
 
                 <div className="ai-messages">
@@ -295,6 +139,18 @@ export default function AIChatPage() {
                             ) : null}
                         </article>
                     ))}
+
+                    {loading && (
+                        <article className="ai-message ai-message-assistant">
+                            <div className="ai-message-role">AI</div>
+                            <div className="ai-typing-indicator">
+                                <span />
+                                <span />
+                                <span />
+                            </div>
+                        </article>
+                    )}
+
                     <div ref={messagesEndRef} />
                 </div>
 
@@ -303,7 +159,7 @@ export default function AIChatPage() {
                         className="ai-textarea"
                         value={inputValue}
                         onChange={(event) => setInputValue(event.target.value)}
-                        placeholder="Ask for top corridors, gender splits, district insights, or data interpretation."
+                        placeholder="Ask about top corridors, gender splits, district insights, or migration reasons..."
                         rows={3}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' && !event.shiftKey) {
@@ -312,14 +168,24 @@ export default function AIChatPage() {
                             }
                         }}
                     />
-                    <button
-                        type="button"
-                        className="ai-send-btn"
-                        onClick={() => sendMessage(inputValue)}
-                        disabled={loading || !inputValue.trim()}
-                    >
-                        {loading ? 'Sending...' : 'Send'}
-                    </button>
+                    {loading ? (
+                        <button
+                            type="button"
+                            className="ai-stop-btn"
+                            title="Stop generating"
+                        >
+                            <span className="ai-stop-icon" />
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="ai-send-btn"
+                            onClick={() => sendMessage(inputValue)}
+                            disabled={!inputValue.trim()}
+                        >
+                            Send
+                        </button>
+                    )}
                 </div>
 
                 {requestError ? <p className="ai-error-text">{requestError}</p> : null}
