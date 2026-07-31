@@ -5,11 +5,6 @@ import json
 from .schemas import ChatContext, ChatTurn
 
 
-# ── Domain Knowledge ───────────────────────────────────────────────────
-# Previously these lived in retrieval.py as separate "documents" that were
-# searched with Jaccard overlap.  Since there are only six short paragraphs,
-# it is far more efficient to inject them directly into the LLM context.
-
 METHODOLOGY_CONTEXT = """
 Key domain knowledge & table guide for India Census 2011 migration dataset:
 
@@ -38,10 +33,7 @@ Key domain knowledge & table guide for India Census 2011 migration dataset:
 """.strip()
 
 
-# ── Helpers ────────────────────────────────────────────────────────────
-
 def _context_block(context: ChatContext | None) -> str:
-    """Serialises the dashboard context (selected state / district / etc.)."""
     if context is None:
         return "No active dashboard context."
     data = context.model_dump(exclude_none=True)
@@ -49,13 +41,10 @@ def _context_block(context: ChatContext | None) -> str:
 
 
 def _history_block(history: list[ChatTurn]) -> str:
-    """Formats conversation history for the prompt."""
     if not history:
         return "No prior conversation."
     return "\n".join(f"{t.role}: {t.content}" for t in history)
 
-
-# ── Prompt Builders ────────────────────────────────────────────────────
 
 def build_sql_generation_prompt(
     *,
@@ -65,12 +54,6 @@ def build_sql_generation_prompt(
     history: list[ChatTurn],
     error_context: str | None = None,
 ) -> str:
-    """
-    Prompt for the LangGraph agent's **generate_sql** node.
-
-    If `error_context` is provided it means a previous SQL attempt failed;
-    the LLM should read the Postgres error and fix the query.
-    """
     error_section = ""
     if error_context:
         error_section = f"""
@@ -123,10 +106,6 @@ def build_answer_prompt(
     sql: str,
     rows: list[dict],
 ) -> str:
-    """
-    Prompt for the LangGraph agent's **generate_answer** node.
-    Takes the SQL result rows and writes a plain-English answer.
-    """
     return f"""
 You are a friendly analytics assistant for India's Census 2011 migration data.
 Write a clear, concise answer using ONLY the data below.

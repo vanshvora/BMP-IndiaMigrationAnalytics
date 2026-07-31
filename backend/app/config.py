@@ -8,11 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    Centralized configuration loaded from environment variables and .env file.
-    Every setting has a sensible default so the app can start locally
-    without a full .env file — but production deploys should set all values.
-    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -21,11 +16,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── App Identity ───────────────────────────────────────────────────
+    # App
     app_name: str = "India Migration AI Chatbot API"
     api_prefix: str = "/api"
 
-    # ── Network ────────────────────────────────────────────────────────
+    # Network
     backend_host: str = Field(default="127.0.0.1", alias="BACKEND_HOST")
     backend_port: int = Field(default=8000, alias="BACKEND_PORT")
     allowed_origins: str = Field(
@@ -33,7 +28,7 @@ class Settings(BaseSettings):
         alias="ALLOWED_ORIGINS",
     )
 
-    # ── LLM (Groq) ────────────────────────────────────────────────────
+    # LLM (Groq)
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
     groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
     groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
@@ -41,18 +36,17 @@ class Settings(BaseSettings):
         default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
     )
 
-    # ── PostgreSQL ─────────────────────────────────────────────────────
+    # PostgreSQL
     database_url: str = Field(default="", alias="DATABASE_URL")
 
-    # ── Observability (Logfire) ────────────────────────────────────────
+    # Observability
     logfire_token: str | None = Field(default=None, alias="LOGFIRE_TOKEN")
 
-    # ── Agent Behaviour ────────────────────────────────────────────────
+    # Agent
     max_sql_retries: int = 3
     max_rows_preview: int = 25
     max_history_turns: int = 8
 
-    # ── Derived Paths ──────────────────────────────────────────────────
     @cached_property
     def project_root(self) -> Path:
         return Path(__file__).resolve().parents[2]
