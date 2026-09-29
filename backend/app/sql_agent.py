@@ -5,24 +5,12 @@ from contextlib import nullcontext
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from .config import Settings
 from .db import DatabaseManager
 from .prompting import build_sql_generation_prompt, build_answer_prompt
 from .schemas import ChatContext, ChatRequest, ChatResponse, ChatTurn, Citation
-
-try:
-    import logfire
-except ImportError:
-    logfire = None  # type: ignore[assignment]
-
-
-def _span(name: str, **attrs):
-    if logfire:
-        return logfire.span(name, **attrs)
-    return nullcontext()
 
 
 class AgentState(TypedDict):
@@ -58,63 +46,82 @@ def _smalltalk_response(question: str) -> str | None:
     return None
 
 
-def _validate_sql(sql: str) -> str | None:
-    """Ensures the SQL is a SELECT and contains no dangerous keywords."""
-    cleaned = sql.strip().rstrip(";")
-    if not cleaned:
-        return "Generated SQL was empty."
+import sqlglot
+from sqlglot import exp
 
-    lowered = cleaned.lower()
-    if not (lowered.startswith("select") or lowered.startswith("with")):
-        return "Only SELECT queries are allowed."
+def _validate_and_limit_sql(sql: str, allowed_tables: set[str]) -> tuple[str, str | None]:
+    """
+    Parses SQL into an AST to verify it's a safe SELECT query,
+    checks tables against an allowlist, and enforces LIMIT 100.
+    Returns (safe_sql, error_message).
+    """
+    try:
+        parsed = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception as exc:
+        return "", f"SQL syntax error: {exc}"
 
-    banned = [
-        "insert", "update", "delete", "drop", "alter", "create",
-        "truncate", "attach", "copy", "install", "load",
-    ]
-    for word in banned:
-        if re.search(rf"\b{word}\b", lowered):
-            return f"Disallowed SQL keyword: {word}"
+    if not isinstance(parsed, exp.Select):
+        return "", "Only SELECT queries are allowed."
 
-    return None
+    for table in parsed.find_all(exp.Table):
+        tbl_name = table.name.lower()
+        if tbl_name not in allowed_tables:
+            return "", f"Access to table '{tbl_name}' is not permitted."
+
+    current_limit = parsed.args.get("limit")
+    if current_limit:
+        try:
+            limit_val = int(current_limit.expression.name)
+            if limit_val > 100:
+                parsed.set("limit", sqlglot.parse_one("LIMIT 100"))
+        except Exception:
+            parsed.set("limit", sqlglot.parse_one("LIMIT 100"))
+    else:
+        parsed = parsed.limit(100)
+
+    return parsed.sql(dialect="postgres"), None
 
 
 def _generate_sql(state: AgentState, llm: BaseChatModel) -> dict:
     attempt = state.get("attempts", 0) + 1
-    with _span("agent.generate_sql", attempt=attempt):
-        prompt = build_sql_generation_prompt(
-            schema_summary=state["schema"],
-            question=state["question"],
-            context=state.get("context"),
-            history=state.get("history", []),
-            error_context=state.get("sql_error") or None,
-        )
+    prompt = build_sql_generation_prompt(
+        schema_summary=state["schema"],
+        question=state["question"],
+        context=state.get("context"),
+        history=state.get("history", []),
+        error_context=state.get("sql_error") or None,
+    )
 
-        response = llm.invoke(prompt)
-        raw_sql = str(response.content).strip()
+    response = llm.invoke(prompt)
+    raw_sql = str(response.content).strip()
 
-        if raw_sql.startswith("```"):
-            raw_sql = re.sub(r"^```(?:sql)?\n?", "", raw_sql)
-            raw_sql = re.sub(r"\n?```$", "", raw_sql)
+    if raw_sql.startswith("```"):
+        raw_sql = re.sub(r"^```(?:sql)?\n?", "", raw_sql)
+        raw_sql = re.sub(r"\n?```$", "", raw_sql)
 
-        return {
-            "sql": raw_sql.strip(),
-            "attempts": attempt,
-        }
+    return {
+        "sql": raw_sql.strip(),
+        "attempts": attempt,
+    }
 
 
 def _execute_sql(state: AgentState, db: DatabaseManager) -> dict:
     sql = state["sql"]
-    with _span("agent.execute_sql", sql=sql[:200]):
-        validation_error = _validate_sql(sql)
-        if validation_error:
-            return {"sql_error": validation_error, "result": []}
+    # Extract allowed tables dynamically from the schema in the state
+    allowed_tables = {
+        line.split(":")[0].lstrip("- ").strip().lower()
+        for line in state["schema"].split("\n") if line.strip().startswith("-")
+    }
+    
+    safe_sql, validation_error = _validate_and_limit_sql(sql, allowed_tables)
+    if validation_error:
+        return {"sql_error": validation_error, "result": []}
 
-        rows, error = db.safe_execute(sql)
-        if error:
-            return {"sql_error": error, "result": []}
+    rows, error = db.safe_execute(safe_sql)
+    if error:
+        return {"sql_error": error, "result": []}
 
-        return {"sql_error": "", "result": rows or []}
+    return {"sql_error": "", "result": rows or []}
 
 
 def _generate_answer(state: AgentState, llm: BaseChatModel) -> dict:
@@ -130,16 +137,15 @@ def _generate_answer(state: AgentState, llm: BaseChatModel) -> dict:
             "route": "sql",
         }
 
-    with _span("agent.generate_answer", row_count=len(rows)):
-        prompt = build_answer_prompt(
-            question=state["question"],
-            context=state.get("context"),
-            sql=state["sql"],
-            rows=rows,
-        )
+    prompt = build_answer_prompt(
+        question=state["question"],
+        context=state.get("context"),
+        sql=state["sql"],
+        rows=rows,
+    )
 
-        response = llm.invoke(prompt)
-        return {"answer": str(response.content).strip(), "route": "sql"}
+    response = llm.invoke(prompt)
+    return {"answer": str(response.content).strip(), "route": "sql"}
 
 
 def _should_retry(state: AgentState) -> str:
@@ -166,8 +172,7 @@ def build_sql_agent(llm: BaseChatModel, db: DatabaseManager):
     })
     graph.add_edge("generate_answer", END)
 
-    memory = MemorySaver()
-    return graph.compile(checkpointer=memory)
+    return graph.compile()
 
 
 class ChatOrchestrator:
@@ -176,15 +181,17 @@ class ChatOrchestrator:
         self,
         *,
         settings: Settings,
-        db: DatabaseManager,
+        db: DatabaseManager | None,
         llm: BaseChatModel | None,
         llm_error: str | None = None,
+        db_error: str | None = None,
     ) -> None:
         self.settings = settings
         self.db = db
+        self.db_error = db_error
         self.llm = llm
         self.llm_error = llm_error
-        self.agent = build_sql_agent(llm, db) if llm else None
+        self.agent = build_sql_agent(llm, db) if (llm and db) else None
 
     def _follow_ups(
         self, state: str | None, district: str | None,
@@ -211,6 +218,14 @@ class ChatOrchestrator:
                 answer=smalltalk, route="smalltalk", follow_ups=follow_ups,
             )
 
+        if self.db_error or (self.db and not self.db.db_ok):
+            err = self.db_error or "Database connection is not healthy."
+            return ChatResponse(
+                answer="I'm temporarily unable to access the database. Please try again later.",
+                route="error",
+                error=err,
+            )
+
         if not self.agent:
             return ChatResponse(
                 answer=self.llm_error or "LLM is not configured.",
@@ -234,8 +249,7 @@ class ChatOrchestrator:
                     "answer": "",
                     "attempts": 0,
                     "route": "sql",
-                },
-                config={"configurable": {"thread_id": "default"}},
+                }
             )
 
             return ChatResponse(

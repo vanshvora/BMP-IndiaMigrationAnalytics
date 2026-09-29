@@ -3,44 +3,64 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Generator
 
+import threading
+import time
 import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 
 from .config import Settings
-
-try:
-    import logfire
-except ImportError:
-    logfire = None  # type: ignore[assignment]
-
-
-def _span(name: str, **attrs):
-    if logfire:
-        return logfire.span(name, **attrs)
-    from contextlib import nullcontext as _nc
-    return _nc()
-
 
 class DatabaseManager:
 
     def __init__(self, settings: Settings) -> None:
         self.database_url = settings.database_url
-        self._schema: str = self._build_schema_summary()
+        self.pool = None
+        self.db_ok = False
+        self._schema: str = ""
+        
+        self._init_db()
+        if not self.db_ok and self.database_url:
+            print("[WARNING] Database init failed at startup. Retrying in background.")
+            threading.Thread(target=self._background_retry, daemon=True).start()
+
+    def _init_db(self) -> None:
+        if not self.database_url:
+            return
+        try:
+            self.pool = ThreadedConnectionPool(1, 10, dsn=self.database_url)
+            self.db_ok = True
+            self._schema = self._build_schema_summary()
+            print("[SUCCESS] Database connected successfully.")
+        except Exception as e:
+            self.db_ok = False
+            if self.pool:
+                self.pool.closeall()
+            self.pool = None
+
+    def _background_retry(self) -> None:
+        while not self.db_ok:
+            time.sleep(5)
+            self._init_db()
 
     @contextmanager
     def _connect(self) -> Generator:
-        conn = psycopg2.connect(self.database_url)
+        if not self.pool:
+            raise Exception("Database connection pool is not initialized.")
+        conn = self.pool.getconn()
         try:
             yield conn
         finally:
-            conn.close()
+            self.pool.putconn(conn)
 
     def execute_query(self, sql: str) -> list[dict]:
-        with _span("db.execute", sql=sql[:200]):
-            with self._connect() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(sql)
-                    return [dict(row) for row in cur.fetchall()]
+        with self._connect() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SET statement_timeout = 15000")
+                cur.execute("SET TRANSACTION READ ONLY")
+                cur.execute(sql)
+                conn.commit()
+                return [dict(row) for row in cur.fetchall()]
 
     def safe_execute(self, sql: str) -> tuple[list[dict] | None, str | None]:
         """Returns (rows, None) on success or (None, error_message) on failure."""
@@ -62,23 +82,22 @@ class DatabaseManager:
 
     def _build_schema_summary(self) -> str:
         """Queries information_schema once at startup and builds a schema string for the LLM."""
-        with _span("db.schema_summary"):
-            rows = self.execute_query(
-                "SELECT table_name, column_name, data_type "
-                "FROM information_schema.columns "
-                "WHERE table_schema = 'public' "
-                "ORDER BY table_name, ordinal_position"
-            )
-            tables: dict[str, list[str]] = {}
-            for row in rows:
-                col_name = row["column_name"]
-                quoted_col = f'"{col_name}"' if any(c.isupper() for c in col_name) else col_name
-                col_desc = f"{quoted_col} ({row['data_type']})"
-                tables.setdefault(row["table_name"], []).append(col_desc)
+        rows = self.execute_query(
+            "SELECT table_name, column_name, data_type "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'public' "
+            "ORDER BY table_name, ordinal_position"
+        )
+        tables: dict[str, list[str]] = {}
+        for row in rows:
+            col_name = row["column_name"]
+            quoted_col = f'"{col_name}"' if any(c.isupper() for c in col_name) else col_name
+            col_desc = f"{quoted_col} ({row['data_type']})"
+            tables.setdefault(row["table_name"], []).append(col_desc)
 
-            return "\n".join(
-                f"- {tbl}: {', '.join(cols)}" for tbl, cols in tables.items()
-            )
+        return "\n".join(
+            f"- {tbl}: {', '.join(cols)}" for tbl, cols in tables.items()
+        )
 
     def context_options(self) -> dict:
         """Returns states and districts for frontend dropdowns."""

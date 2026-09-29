@@ -85,15 +85,17 @@ bmp-cursor/
 │   └── requirements.txt
 │
 ├── data-cleaning/              # Data processing pipeline
-│   ├── D01_EDA.ipynb           # Exploratory data analysis notebooks
-│   ├── D02_EDA.ipynb
-│   ├── D03_EDA.ipynb
-│   ├── D04_Preprocessing.ipynb
-│   ├── D12_Preprocessing.ipynb
-│   ├── build_district_d02_d04.py   # District-level flow builder script
-│   ├── *_cleaned.csv           # Cleaned output datasets
-│   ├── district_*.csv          # District-level derived datasets
-│   └── D-0*-ALL/               # Raw census source data directories
+│   ├── D01_EDA.ipynb           # Exploratory analysis + cleaning for D01
+│   ├── D02_EDA.ipynb           # Exploratory analysis + cleaning for D02
+│   ├── D03_EDA.ipynb           # Exploratory analysis + cleaning for D03
+│   ├── D04_Preprocessing.ipynb # Preprocessing for D04
+│   ├── D12_Preprocessing.ipynb # Preprocessing for D12
+│   ├── D01_District_Flows.ipynb    # District-level interstate flow builder (D01)
+│   ├── build_district_etl.ipynb    # District-level ETL for D02/D03/D04/D06/D10
+│   ├── *_cleaned.csv           # Cleaned state-level datasets
+│   ├── district_*.csv          # Cleaned district-level datasets
+│   └── D-0*-ALL/               # Raw per-state Excel workbooks (not committed)
+│                               # Download from Census of India 2011 D-Series
 │
 ├── .gitignore
 └── README.md
@@ -172,16 +174,18 @@ All migration data is sourced from the **Census of India 2011 — D-Series Table
 
 | Dataset | Description |
 |---|---|
-| `D01` | Migrants by place of last residence — state-level |
-| `D02` | Migrants by place of last residence and duration — state-level |
-| `D03` | Migrants by place of last residence and reason — state-level |
+| `D01` | Migrants by place of birth — state-level |
+| `D02` | Migrants by last residence × duration of residence — state-level |
+| `D03` | Migrants by last residence × reason for migration — state-level |
 | `D04` | Migrants by educational level — state-level |
-| `D06` | Migrants by marital status — state-level |
-| `D10` | Migrants by economic activity — state-level |
-| `D12` | Migrants by place of last residence — district-level |
-| `district_*` | Derived district-level datasets (flows, reasons, duration, education, etc.) |
+| `D06` | Migrants by economic activity — state-level |
+| `D10` | Migrants by marital status — state-level |
+| `D12` | Age-wise migrants by last residence — state × origin flows |
+| `district_*` | Derived district-level datasets (flows, reasons, duration, education, marital status) |
 
-The raw Excel files are processed through Jupyter notebooks and Python scripts in the `data-cleaning/` directory to produce the cleaned CSVs consumed by the frontend and the DuckDB database used by the backend.
+The raw Excel files (`DS-0000-D0X-MDDS.XLSX`) are **not committed** to this repository due to size.
+To regenerate the CSVs, download the relevant D-Series tables from the [Census of India 2011 website](https://censusindia.gov.in)
+and run the corresponding notebook in `data-cleaning/`.
 
 ---
 

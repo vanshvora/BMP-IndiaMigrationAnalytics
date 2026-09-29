@@ -11,3 +11,4 @@ logfire[fastapi]
 nemoguardrails
 pandas
 sqlalchemy
+sqlglot

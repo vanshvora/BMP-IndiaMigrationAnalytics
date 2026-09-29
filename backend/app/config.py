@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import os
 from functools import cached_property
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ensure .env is loaded into os.environ for external libraries like LangSmith
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -31,16 +36,13 @@ class Settings(BaseSettings):
     # LLM (Groq)
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
     groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
-    groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
+    groq_model: str = Field(default="llama-3.1-70b-versatile", alias="GROQ_MODEL")
     groq_base_url: str = Field(
         default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
     )
 
     # PostgreSQL
     database_url: str = Field(default="", alias="DATABASE_URL")
-
-    # Observability
-    logfire_token: str | None = Field(default=None, alias="LOGFIRE_TOKEN")
 
     # Agent
     max_sql_retries: int = 3

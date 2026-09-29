@@ -28,6 +28,24 @@ function formatCellValue(value, key) {
     return String(value);
 }
 
+function renderFormattedText(text) {
+    if (!text) return null;
+    return text.split('\n').map((line, i) => {
+        const parts = line.split(/(\*\*.*?\*\*)/g);
+        return (
+            <span key={i}>
+                {parts.map((part, j) => {
+                    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+                        return <strong key={j}>{part.slice(2, -2)}</strong>;
+                    }
+                    return part;
+                })}
+                {i < text.split('\n').length - 1 && <br />}
+            </span>
+        );
+    });
+}
+
 export default function AIChatPage() {
     const [inputValue, setInputValue] = useState('');
     const [loading, setLoading] = useState(false);
@@ -111,7 +129,7 @@ export default function AIChatPage() {
                     {messages.map((message) => (
                         <article key={message.id} className={`ai-message ai-message-${message.role}`}>
                             <div className="ai-message-role">{message.role === 'assistant' ? 'AI' : 'You'}</div>
-                            <p className="ai-message-content">{message.content}</p>
+                            <p className="ai-message-content">{renderFormattedText(message.content)}</p>
 
                             {message.role === 'assistant' && Array.isArray(message.meta?.dataPreview) && message.meta.dataPreview.length >= 4 ? (
                                 <div className="ai-result-table-wrap">

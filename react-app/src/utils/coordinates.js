@@ -97,28 +97,9 @@ export function normalizeName(name) {
     if (!name) return "";
     let n = name.toUpperCase().trim();
 
-    // remove stuff like (01), (02) etc at the end
-    n = n.replace(/\s*\(\d+\)$/, "");
-
-    // remove prefixes like "State - " and "UT - "
-    n = n.replace(/^STATE\s*-\s*/, "");
-    n = n.replace(/^UT\s*-\s*/, "");
-    n = n.trim();
-
-    // some names are written differently in the csv vs geojson
-    // this maps them to one standard name
     const mapping = {
-        "DELHI": "NCT OF DELHI",
-        "NCT OF DELHI": "NCT OF DELHI",
-        "ORISSA": "ODISHA",
-        "TELENGANA": "TELANGANA",
-        "UTTARANCHAL": "UTTARAKHAND",
-        "JAMMU AND KASHMIR": "JAMMU & KASHMIR",
-        "ANDAMAN AND NICOBAR": "ANDAMAN & NICOBAR ISLANDS",
-        "ANDAMAN AND NICOBAR ISLANDS": "ANDAMAN & NICOBAR ISLANDS",
         "ANDAMAN & NICOBAR": "ANDAMAN & NICOBAR ISLANDS",
-        "DADRA AND NAGAR HAVELI": "DADRA & NAGAR HAVELI",
-        "DAMAN AND DIU": "DAMAN & DIU",
+        "ANDAMAN AND NICOBAR": "ANDAMAN & NICOBAR ISLANDS"
     };
 
     if (mapping[n]) {
