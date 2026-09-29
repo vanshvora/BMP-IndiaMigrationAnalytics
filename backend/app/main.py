@@ -99,6 +99,7 @@ app.router.lifespan_context = lifespan_context
 
 # Chat endpoint
 
+@app.get("/health", include_in_schema=False)
 @app.get(f"{settings.api_prefix}/health")
 def health_check():
     orchestrator = getattr(app.state, "orchestrator", None)
@@ -117,6 +118,12 @@ def health_check():
         "llm_ok": llm_ok,
         "schema_tables": schema_tables
     }
+
+
+# OpenAI-compatible stub to silence local tool probes (e.g. GET /v1/models)
+@app.get("/v1/models", include_in_schema=False)
+def list_models_stub():
+    return {"data": [{"id": settings.groq_model, "object": "model"}]}
 
 
 # Dedicated Analytics Thread Pool

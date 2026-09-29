@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # LLM (Groq)
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
     groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
-    groq_model: str = Field(default="llama-3.1-70b-versatile", alias="GROQ_MODEL")
+    groq_model: str = Field(default="openai/gpt-oss-20b", alias="GROQ_MODEL")
     groq_base_url: str = Field(
         default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
     )
